@@ -342,6 +342,21 @@ namespace GgoSoft.Storage
 		{
 			return data;
 		}
+		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
+		// thrown until the enumeration is read
+		private IEnumerable<T> ReadEnumerable<T>(int length, int typeLength) where T : struct
+		{
+			int numBytes = length / typeLength;
+			int extraBits = length % typeLength;
+			int end = extraBits == 0 ? numBytes : numBytes + 1;
+			// Loop through the number of items to read, read the bits and yield return the value
+			for (int i = 0; i < end; i++)
+			{
+				Read((i < numBytes ? typeLength : extraBits), out T returnValue);
+				yield return returnValue;
+			}
+		}
+
 		/// <summary>
 		/// Special edge case for boolean values.  This will take the boolean values, create a ulong with the appropriate bits
 		/// set and call the generic <see cref="Write{T}(IEnumerable{T}, int?)"/> method to write the bits.
@@ -354,7 +369,7 @@ namespace GgoSoft.Storage
 			int bits = TypeLengths[value.GetType()];
 			int i = 0;
 			bool wroteLast = false;
-			foreach(bool bit in data)
+			foreach (bool bit in data)
 			{
 				// Shift the value to the left and add the bit
 				value <<= 1;
@@ -429,39 +444,6 @@ namespace GgoSoft.Storage
 		}
 
 		/// <summary>
-		/// Reads the specified number of bits from the storage and returns them as a Enumerable of numbers.
-		/// </summary>
-		/// <typeparam name="T">The data type of the Enumerable elements</typeparam>
-		/// <param name="length">The number of bits to read.</param>
-		/// <returns>An Enumerable of values representing the read bits</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public IEnumerable<T> Read<T>(int length) where T : struct
-		{
-			Type tType = typeof(T);
-			// Hack to find the last bit count read since the bits are read in an enumerable with yield return
-			LastReadBitCount = 0;
-			if (!TypeLengths.TryGetValue(tType, out int typeLength))
-			{
-				throw new ArgumentOutOfRangeException($"Type {tType} is not supported");
-			}
-			return ReadEnumerable<T>(length, typeLength);
-		}
-		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
-		// thrown until the enumeration is read
-		private IEnumerable<T> ReadEnumerable<T>(int length, int typeLength) where T : struct
-		{
-			int numBytes = length / typeLength;
-			int extraBits = length % typeLength;
-			int end = extraBits == 0 ? numBytes : numBytes + 1;
-			// Loop through the number of items to read, read the bits and yield return the value
-			for (int i = 0; i < end; i++)
-			{
-				Read((i < numBytes ? typeLength : extraBits), out T returnValue);
-				yield return returnValue;
-			}
-		}
-
-		/// <summary>
 		/// Writes the bits from another BitStorage instance to this storage.
 		/// </summary>
 		/// <param name="bits">The BitStorage instance containing the bits to write.</param>
@@ -479,12 +461,6 @@ namespace GgoSoft.Storage
 
 			WriteBit(bit, mask, WriteByteIndex);
 			WriteBitIndex--;
-		}
-
-
-		public bool Read(int index)
-		{
-			return this[index];
 		}
 		/// <summary>
 		/// Writes the specified bits to the storage.  The bits are written in big-endian order, so the left-most bits are written first up
@@ -555,18 +531,41 @@ namespace GgoSoft.Storage
 				WriteBitIndex -= tempWriteLength;
 			}
 		}
+
 		/// <summary>
-		/// Reads a specified number of bits from the storage and returns them as the out variable.  The bits will be returned big-endian,
-		/// so the left most bits will contain the bits returned, unless <paramref name="writeLeft"/> is set to false.  
-		/// E.g. if the <paramref name="bitsToRead"/> is 3, <typeparamref name="T"/> is a byte, 
-		/// and the next 3 bits are 0b101, the out variable will be 0b10100000
+		/// Reads the specified number of bits from the storage and returns them as a Enumerable of numbers.
 		/// </summary>
-		/// <typeparam name="T">The data type of the number holding the bits to be written</typeparam>
-		/// <param name="bitsToRead">The number of bits to read. Must be between 0 and the maximum number of bits in <typeparamref name="T"/>.</param>
-		/// <param name="returnValue">The value of the bits read.</param>
-		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
-		/// <returns>The actual number of bits read.</returns>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
+		/// <typeparam name="T">The data type of the Enumerable elements</typeparam>
+		/// <param name="length">The number of bits to read.</param>
+		/// <returns>An Enumerable of values representing the read bits</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
+		public IEnumerable<T> Read<T>(int length) where T : struct
+		{
+			Type tType = typeof(T);
+			// Hack to find the last bit count read since the bits are read in an enumerable with yield return
+			LastReadBitCount = 0;
+			if (!TypeLengths.TryGetValue(tType, out int typeLength))
+			{
+				throw new ArgumentOutOfRangeException($"Type {tType} is not supported");
+			}
+			return ReadEnumerable<T>(length, typeLength);
+		}
+
+		public bool Read(int index)
+		{
+			return this[index];
+		}       /// <summary>
+				/// Reads a specified number of bits from the storage and returns them as the out variable.  The bits will be returned big-endian,
+				/// so the left most bits will contain the bits returned, unless <paramref name="writeLeft"/> is set to false.  
+				/// E.g. if the <paramref name="bitsToRead"/> is 3, <typeparamref name="T"/> is a byte, 
+				/// and the next 3 bits are 0b101, the out variable will be 0b10100000
+				/// </summary>
+				/// <typeparam name="T">The data type of the number holding the bits to be written</typeparam>
+				/// <param name="bitsToRead">The number of bits to read. Must be between 0 and the maximum number of bits in <typeparamref name="T"/>.</param>
+				/// <param name="returnValue">The value of the bits read.</param>
+				/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
+				/// <returns>The actual number of bits read.</returns>
+				/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
 		public int Read<T>(int bitsToRead, out T returnValue, bool readLeft = true) where T : struct
 		{
 			LastReadBitCount = 0;
@@ -623,5 +622,6 @@ namespace GgoSoft.Storage
 			LastReadBitCount = returnBits;
 			return returnBits;
 		}
+
 	}
 }
