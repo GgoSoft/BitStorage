@@ -1,5 +1,11 @@
-﻿using System.Collections.Immutable;
-namespace GGOSoft.Storage
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+namespace GgoSoft.Storage
 {
 
 	/// <summary>
@@ -9,7 +15,7 @@ namespace GGOSoft.Storage
 	public class BitStorage
 	{
 		private static readonly ImmutableDictionary<Type, int> TypeLengths = ImmutableDictionary.CreateRange(
-			[
+			new List<KeyValuePair<Type, int>>() {
 				KeyValuePair.Create( typeof(ulong), sizeof(ulong) * 8),
 				KeyValuePair.Create( typeof(uint), sizeof(uint) * 8),
 				KeyValuePair.Create( typeof(ushort), sizeof(ushort) * 8),
@@ -18,7 +24,7 @@ namespace GGOSoft.Storage
 				KeyValuePair.Create( typeof(int), sizeof(int) * 8 - 1),
 				KeyValuePair.Create( typeof(short), sizeof(short) * 8 - 1),
 				KeyValuePair.Create( typeof(sbyte), sizeof(sbyte) * 8 - 1)
-			]);
+			});
 		// Index of the byte currently being read
 		private int readByteIndex = 0;
 		// Index of the bit within the current byte being read. This will go down as each bit is read and will reset
@@ -58,6 +64,15 @@ namespace GGOSoft.Storage
 			set
 			{
 				writeBitIndex = value;
+				// If the write bit index is less than 0, we need to reset the WriteBitIndex and move to the next byte
+				if (writeBitIndex < 0)
+				{
+					writeBitIndex = StorageElementLength - 1;
+					WriteByteIndex++;
+				} else if(writeBitIndex >= StorageElementLength)
+				{
+					throw new ArgumentOutOfRangeException($"WriteBitIndex {writeBitIndex} is cannot be greater than {StorageElementLength}");
+				}
 				CheckMaxBits(); // Ensure the length is updated if necessary
 			}
 		}
@@ -67,24 +82,26 @@ namespace GGOSoft.Storage
 		/// </summary>
 		public int Length { get; private set; } = 0; // Total number of bits in the storage
 		public int LastReadBitCount { get; private set; } = 0; // Number of bits read in the last read operation
-		private readonly List<byte> data = []; // List of bytes to store the bits
+		private readonly List<byte> data = new(); // List of bytes to store the bits
 
 		/// <summary>
 		/// Checks and updates the maximum number of bits written to the storage.
 		/// </summary>
 		private void CheckMaxBits()
 		{
-			if (WriteIndex > Length)
+			var writeIndex = WriteIndex; // WriteIndex is calculated, this makes it so it's only called once
+			if (writeIndex > Length)
 			{
-				Length = WriteIndex; // Update the length if the current write index exceeds it
+				Length = writeIndex; // Update the length if the current write index exceeds it
 			}
 		}
 		private static ulong GetMask(int length)
 		{
 			return length switch
 			{
-				>= 0 and < 64 => ((ulong)1 << length) - 1,
-				64 => ulong.MaxValue,
+				0 => 0, // ulong.MaxValue >> 64 = ulong.MaxValue, it seems like the RHS is % 64, so this has to be an edge case
+				> 0 and < 64 => ulong.MaxValue >> TypeLengths[typeof(ulong)] - length, // could have hard coded to 64 for ulong but this is more flexible
+				64 => ulong.MaxValue, // the calculation above will work, but if there are conditions, may as well be explicit
 				_ => throw new ArgumentOutOfRangeException($"Invalid length: {length}, values must be between 0 and 64")
 			};
 		}
@@ -105,13 +122,9 @@ namespace GGOSoft.Storage
 			}
 			set
 			{
-				if (value > Length)
+				if (value < 0 || value > Length)
 				{
-					throw new ArgumentOutOfRangeException($"Cannot set Write index to greater than Length ({Length})");
-				}
-				if (value < 0)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot set Write index to less than 0: {value}");
+					throw new ArgumentOutOfRangeException($"Invalid WriteIndex: {value}, values must be between 0 and {Length}");
 				}
 				writeByteIndex = value / StorageElementLength;
 				writeBitIndex = StorageElementLength - value % StorageElementLength - 1;
@@ -130,13 +143,9 @@ namespace GGOSoft.Storage
 			}
 			set
 			{
-				if (value > Length)
+				if (value < 0 || value > Length)
 				{
-					throw new ArgumentOutOfRangeException($"Cannot set Read index to greater than Length ({Length})");
-				}
-				if (value < 0)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot set Read index to less than 0: {value}");
+					throw new ArgumentOutOfRangeException($"Invalid ReadIndex: {value}, values must be between 0 and {Length}");
 				}
 				readByteIndex = value / StorageElementLength;
 				readBitIndex = StorageElementLength - value % StorageElementLength - 1;
@@ -144,7 +153,7 @@ namespace GGOSoft.Storage
 		}
 		/// <summary>
 		/// Gets or sets the bits at the specified range in the storage using a boolean array.  This does not use the
-		/// <see cref="this[long]"/> for speed reasons.
+		/// <see cref="this[int]"/> for speed reasons.
 		/// </summary>
 		/// <param name="range">The range of bits</param>
 		/// <returns>A new boolean array holding the bits</returns>
@@ -157,14 +166,24 @@ namespace GGOSoft.Storage
 				{
 					throw new ArgumentOutOfRangeException($"Cannot get index {range} from storage of length {Length}");
 				}
-				int start = range.Start.Value;
-				int end = range.End.Value;
+				// Get the start and the end of the range, taking into account the IsFromEnd property
+				int start = range.Start.IsFromEnd? Length - range.Start.Value : range.Start.Value;
+				int end = range.End.IsFromEnd? Length - range.End.Value : range.End.Value;
+				if (start > end)
+				{
+					throw new ArgumentOutOfRangeException($"Specified argument {range} was out of the range of valid values.");
+				}
+				// Calculate the length of the range and create the return array
 				int length = end - start;
 				bool[] returnValue = new bool[length];
+				// get the data element location and bit mask for the start of the range, then loop over each item in the range
 				var (element, bitMask) = GetLocation(start);
 				for (int i = 0; i < length; i++)
 				{
+					// check if the bit is set in the data element and set the return value accordingly
 					returnValue[i] = (data[element] & bitMask) > 0;
+					// shift the bit mask to the right to get the next bit in the data element and reset the bit mask and element
+					// index if it goes to 0
 					bitMask >>= 1;
 					if (bitMask == 0)
 					{
@@ -180,20 +199,27 @@ namespace GGOSoft.Storage
 				{
 					throw new ArgumentOutOfRangeException($"Cannot get index {range} from storage of length {Length}");
 				}
-				int start = range.Start.Value;
-				int end = range.End.Value;
+				// Get the start and the end of the range, taking into account the IsFromEnd property
+				int start = range.Start.IsFromEnd ? Length - range.Start.Value : range.Start.Value;
+				int end = range.End.IsFromEnd ? Length - range.End.Value : range.End.Value;
+				if (start > end)
+				{
+					throw new ArgumentOutOfRangeException($"Specified argument {range} was out of the range of valid values.");
+				}
+				// Calculate the length of the range and check if the length of the array matches
 				int length = end - start;
+				if(length != value.Length)
+				{
+					throw new ArgumentOutOfRangeException($"Range is specified as {range} ({length} bits), but length of array given is {value.Length}");
+				}
+				// get the data element location and bit mask for the start of the range, then loop over each item in the range
 				var (element, bitMask) = GetLocation(start);
 				for (int i = 0; i < length; i++)
 				{
-					if (value[i])
-					{
-						data[element] |= (byte)bitMask;
-					}
-					else
-					{
-						data[element] &= (byte)~bitMask;
-					}
+					// check if the bit is set in the data element and set the return value accordingly
+					WriteBit(value[i], bitMask, element);
+					// shift the bit mask to the right to get the next bit in the data element and reset the bit mask and element
+					// index if it goes to 0
 					bitMask >>= 1;
 					if (bitMask == 0)
 					{
@@ -203,30 +229,50 @@ namespace GGOSoft.Storage
 				}
 			}
 		}
+		private void WriteBit(bool bit, int mask, int byteIndex)
+		{
+			if (bit)
+			{
+				data[byteIndex] |= (byte)mask;
+			}
+			else
+			{
+				data[byteIndex] &= (byte)~mask;
+			}
+		}
+
 		/// <summary>
 		/// Gets or sets the bits at the specified index in the storage.  This does not use <see cref="this[Range]"/> for speed reasons
 		/// </summary>
 		/// <param name="index">The index of the bit requested</param>
 		/// <returns>Bool representing the bit</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="index"/> is out of range</exception>
-		public bool this[long index]
+		public bool this[Index index]
 		{
 			get
 			{
-				if (index < 0 || index >= Length)
+				// get the index of the bit requested, taking into account the IsFromEnd property
+				int convertedIndex = index.IsFromEnd ? Length - index.Value : index.Value;
+				if (convertedIndex < 0 || convertedIndex >= Length)
 				{
 					throw new ArgumentOutOfRangeException($"Cannot get index {index} from storage of length {Length}");
 				}
-				var (element, bitMask) = GetLocation(index);
-				return (data[element] & bitMask) > 0;
+				// get the data element location and bit mask for the index
+				var (element, bitMask) = GetLocation(convertedIndex);
+				// check if the bit is set in the data element and return the result
+				return (data[element] & bitMask) != 0;
 			}
 			set
 			{
-				if (index < 0 || index >= Length)
+				// get the index of the bit requested, taking into account the IsFromEnd property
+				int convertedIndex = index.IsFromEnd ? Length - index.Value : index.Value;
+				if (convertedIndex < 0 || convertedIndex >= Length)
 				{
 					throw new ArgumentOutOfRangeException($"Cannot set index {index} from storage of length {Length}");
 				}
-				var (element, bitMask) = GetLocation(index);
+				// get the data element location and bit mask for the index
+				var (element, bitMask) = GetLocation(convertedIndex);
+				// check if the bit is set in the supplied value and set the value accordingly
 				if (value)
 				{
 					data[element] |= (byte)bitMask;
@@ -238,10 +284,10 @@ namespace GGOSoft.Storage
 			}
 		}
 		//helper method to get the storage element and bit mask of the index
-		private static (int elememt, int bitMask) GetLocation(long index)
+		private static (int elememt, int bitMask) GetLocation(int index)
 		{
-			int element = (int)(index / StorageElementLength);
-			int bitMask = 1 << (StorageElementLength - (int)(index % StorageElementLength) - 1);
+			int element = index / StorageElementLength;
+			int bitMask = 1 << (StorageElementLength - (index % StorageElementLength) - 1);
 			return (element, bitMask);
 		}
 
@@ -281,14 +327,10 @@ namespace GGOSoft.Storage
 		/// <param name="length">How many bits of the Enumerable to be written, all of them if null</param>
 		/// <returns>A new BitStorage object containing the bits from the Enumerable</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public static BitStorage Create<T>(IEnumerable<T> data, long? length = null) where T : struct
+		public static BitStorage Create<T>(IEnumerable<T> data, int? length = null) where T : struct
 		{
-			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
-			{
-				throw new ArgumentOutOfRangeException($"Type {typeof(T)} is not supported");
-			}
 			BitStorage returnValue = new();
-			returnValue.Write(data, length ?? typeLength * data.Count());
+			returnValue.Write(data, length);
 			return returnValue;
 		}
 
@@ -300,7 +342,49 @@ namespace GGOSoft.Storage
 		{
 			return data;
 		}
-
+		/// <summary>
+		/// Special edge case for boolean values.  This will take the boolean values, create a ulong with the appropriate bits
+		/// set and call the generic <see cref="Write{T}(IEnumerable{T}, int?)"/> method to write the bits.
+		/// </summary>
+		/// <param name="data">The boolean collection to write</param>
+		/// <param name="length">The number of elements to write, null if all of them</param>
+		public void Write(IEnumerable<bool> data, int? length = null)
+		{
+			ulong value = 0;
+			int bits = TypeLengths[value.GetType()];
+			int i = 0;
+			bool wroteLast = false;
+			foreach(bool bit in data)
+			{
+				// Shift the value to the left and add the bit
+				value <<= 1;
+				value += (ulong)(bit ? 1 : 0);
+				i++;
+				// If the number of bits is equal to the number of bits in the storage element, write the value and reset it
+				// wroteLast is used to determine if the last value was written, so that the last value can be written if it is not a multiple of the number of bits
+				if (i % bits == 0)
+				{
+					Write(value, bits, false);
+					value = 0;
+					wroteLast = true;
+				}
+				else
+				{
+					wroteLast = false;
+				}
+				// If the length is specified and the end of the data is reached, break out of the loop.  This is used instead
+				// of data.Count() because the length of the data is not known until the end of the enumeration
+				if (i == length)
+				{
+					break;
+				}
+			}
+			// If the last value was not written, write the last value
+			if (!wroteLast)
+			{
+				Write(value, i % bits, false);
+			}
+		}
 		/// <summary>
 		/// Writes the specified values to the storage limited to the specified length in bits.
 		/// E.g. if the values is a 4 byte Enumerable and length of 27, the first 3 bytes will be written as 8 bits each and the 
@@ -310,30 +394,32 @@ namespace GGOSoft.Storage
 		/// <param name="values">The elements to be added</param>
 		/// <param name="length">How many bits of the Enumerable to be written, all of them if null</param>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public void Write<T>(IEnumerable<T> values, long? length = null) where T : struct
+		public void Write<T>(IEnumerable<T> values, int? length = null) where T : struct
 		{
 			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
 			{
 				throw new ArgumentOutOfRangeException($"Type {typeof(T)} is not supported");
 			}
 			// The length of bits to be written, if null, use a negative value to indicate all bits
-			long dataLength = length ?? -typeLength;
-			long numBytes = dataLength / typeLength;
-			long extraBits = dataLength % typeLength;
-			long end = extraBits == 0 ? numBytes : numBytes + 1;
+			int dataLength = length ?? -typeLength;
+			int numBytes = dataLength / typeLength;
+			int extraBits = dataLength % typeLength;
+			int end = extraBits == 0 ? numBytes : numBytes + 1;
 			int i = 0;
 			foreach (var value in values)
 			{
-				Console.WriteLine("Reading bits for write: " + value);
+				// bitLength will be the size of the number until the last number, which will be the extra bits
 				int bitLength = typeLength;
 				if (i == numBytes)
 				{
-					bitLength = (int)extraBits;
+					bitLength = extraBits;
 
 				}
-				WriteBits(value, bitLength);
+				Write(value, bitLength);
 				i++;
 				// If the length is specified and the end of the data is reached, break out of the loop
+				// Doing this instead of a "for" loop because if the length is not given, the enumeration
+				// length will not be known until the end
 				if (length != null && i >= end)
 				{
 					break;
@@ -349,9 +435,10 @@ namespace GGOSoft.Storage
 		/// <param name="length">The number of bits to read.</param>
 		/// <returns>An Enumerable of values representing the read bits</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public IEnumerable<T> Read<T>(long length) where T : struct
+		public IEnumerable<T> Read<T>(int length) where T : struct
 		{
 			Type tType = typeof(T);
+			// Hack to find the last bit count read since the bits are read in an enumerable with yield return
 			LastReadBitCount = 0;
 			if (!TypeLengths.TryGetValue(tType, out int typeLength))
 			{
@@ -359,16 +446,17 @@ namespace GGOSoft.Storage
 			}
 			return ReadEnumerable<T>(length, typeLength);
 		}
-
-		private IEnumerable<T> ReadEnumerable<T>(long length, int typeLength) where T : struct
+		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
+		// thrown until the enumeration is read
+		private IEnumerable<T> ReadEnumerable<T>(int length, int typeLength) where T : struct
 		{
-			long numBytes = length / typeLength;
-			long extraBits = length % typeLength;
-			long end = extraBits == 0 ? numBytes : numBytes + 1;
+			int numBytes = length / typeLength;
+			int extraBits = length % typeLength;
+			int end = extraBits == 0 ? numBytes : numBytes + 1;
+			// Loop through the number of items to read, read the bits and yield return the value
 			for (int i = 0; i < end; i++)
 			{
-				ReadBits((int)(i < numBytes ? typeLength : extraBits), out T returnValue);
-				Console.WriteLine("Enumerable bits for read: " + returnValue);
+				Read((i < numBytes ? typeLength : extraBits), out T returnValue);
 				yield return returnValue;
 			}
 		}
@@ -377,11 +465,27 @@ namespace GGOSoft.Storage
 		/// Writes the bits from another BitStorage instance to this storage.
 		/// </summary>
 		/// <param name="bits">The BitStorage instance containing the bits to write.</param>
-		public void WriteBits(BitStorage bits)
+		public void Write(BitStorage bits)
 		{
 			Write(bits.GetData(), bits.Length);
 		}
+		public void Write(bool bit)
+		{
+			while (WriteByteIndex >= data.Count)
+			{
+				data.Add(0);
+			}
+			var mask = 1 << WriteBitIndex;
 
+			WriteBit(bit, mask, WriteByteIndex);
+			WriteBitIndex--;
+		}
+
+
+		public bool Read(int index)
+		{
+			return this[index];
+		}
 		/// <summary>
 		/// Writes the specified bits to the storage.  The bits are written in big-endian order, so the left-most bits are written first up
 		/// to the <paramref name="length"/> and the rest of the bits (if any) on the right are ignored, unless <paramref name="writeLeft"/> is set to false.
@@ -391,7 +495,7 @@ namespace GGOSoft.Storage
 		/// <param name="length">The number of bits to write.</param>
 		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>
-		public void WriteBits<T>(T bits, int? length = null, bool writeLeft = true) where T : struct//, int offset = 0)
+		public void Write<T>(T bits, int? length = null, bool writeLeft = true) where T : struct//, int offset = 0)
 		{
 			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
 			{
@@ -449,15 +553,8 @@ namespace GGOSoft.Storage
 				data[WriteByteIndex] += (byte)writeBits;
 				// Update the WriteBitIndex
 				WriteBitIndex -= tempWriteLength;
-				// If the write bit index is less than 0, we need to reset the WriteBitIndex and move to the next byte
-				if (WriteBitIndex < 0)
-				{
-					WriteBitIndex = StorageElementLength - 1;
-					WriteByteIndex++;
-				}
 			}
 		}
-
 		/// <summary>
 		/// Reads a specified number of bits from the storage and returns them as the out variable.  The bits will be returned big-endian,
 		/// so the left most bits will contain the bits returned, unless <paramref name="writeLeft"/> is set to false.  
@@ -470,7 +567,7 @@ namespace GGOSoft.Storage
 		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <returns>The actual number of bits read.</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
-		public int ReadBits<T>(int bitsToRead, out T returnValue, bool readLeft = true) where T : struct
+		public int Read<T>(int bitsToRead, out T returnValue, bool readLeft = true) where T : struct
 		{
 			LastReadBitCount = 0;
 			// if the number of bits is more than can be put into a ulong, throw an error
