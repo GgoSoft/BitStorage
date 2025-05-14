@@ -436,6 +436,7 @@ namespace GgoSoft.Storage
 		/// Wrapper method for <see cref="Read{T}(out T, int, bool)"/> to read a single value of type T and return that directly instead
 		/// of an "out" parameter.  This assumes the count is the maximum number of bits of T.
 		/// </summary>
+		/// <param name="bitsReadCount">Out parameter with the number of bits actually read</param>
 		/// <typeparam name="T">The data type to be read, this assumes the # of bits to be read is the length of T</typeparam>
 		/// <returns>The value read</returns>
 		public T Read<T>(out int bitsReadCount) where T : struct
@@ -443,7 +444,15 @@ namespace GgoSoft.Storage
 			bitsReadCount = Read(out T returnValue);
 			return returnValue;
 		}
-
+		/// <summary>
+		/// Wrapper method for <see cref="Read{T}(out int)"/> to read a single value of type T and return that directly and ignore the out parameter.
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <returns></returns>
+		public T Read<T>() where T : struct
+		{
+			return Read<T>(out _);
+		}
 		/// <summary>
 		/// Reads a specified number of bits from the storage and returns them as the out variable.  The bits will be returned big-endian,
 		/// so the left most bits will contain the bits returned, unless <paramref name="writeLeft"/> is set to false.  
@@ -667,6 +676,10 @@ namespace GgoSoft.Storage
 			if (bitsToWrite < 0 || bitsToWrite > typeLength)
 			{
 				throw new ArgumentOutOfRangeException($"Number of bits ({bitsToWrite}) is out of range of {typeLength}");
+			}
+			if(System.Collections.Generic.Comparer<T>.Default.Compare(bits, (T)Convert.ChangeType(0, typeof(T))) < 0)
+			{
+				throw new ArgumentOutOfRangeException($"Number of bits ({bits}) needs to be non-negative");
 			}
 			// tempLength is the number of bits left to write
 			int tempLength = bitsToWrite ?? typeLength;

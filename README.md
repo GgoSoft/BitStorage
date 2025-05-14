@@ -56,17 +56,6 @@ should be pushed in.  It was easier to just not allow negative numbers.  I may r
 | `BitStorage(IEnumerable<long> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of longs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
 | `BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of ulongs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
 
-#### Examples
-```csharp
-// creates an empty BitStorage object
-BitStorage bs = new BitStorage();
-
-// creates a BitStorage object with 0b10100000 as the first element with a length of 3 bits
-BitStorage bs = new BitStorage(new List<bool> { true, false, true });
-
-// creates a BitStorage object with 0b01111011, 0b00101010, 0b00000011 as the first elements
-BitStorage bs = new BitStorage(new List<byte> { 123, 42, 3 });
-```
 
 ### Properties
 
@@ -86,8 +75,73 @@ BitStorage bs = new BitStorage(new List<byte> { 123, 42, 3 });
 | `IEnumerable<byte> GetData()` | Returns all the data stored as an Enumerable of bytes. This returns all the data and is independant of the 'ReadIndex'|
 | `IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null)` | Returns an enumerable of the next `bitsToRead` bits. This will return the bits in the order they were written. The `ReadIndex` will be updated to the next bit after the last bit read. For every enumberable element, the `LastReadBitCount` property will be updated. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. If `bitsRead` is not null, the `BitsReadCount` will be updated on that object |
 | `T Read<T>(out int bitsReadCount)` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsReadCount` parameter will be set to the number of bits that were read.|
+| `T Read<T>()` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read.  The number of bits read will have to be assumed by the calling program, or use the `LastReadBitCount` property|
 | `int Read<T>(out T bits, int? bitsToRead = null, bool readLeft = true)` | Reads the next `bitsToRead` bits and stores them in `bitsRead`. The return value is the number of bits read. `readLeft` specifies whether the `bitsRead` will be big-endian(left) or little-endian(right). The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. |
 | `void Write(BitStorage bits)` | Writes the BitStorage object to the current BitStorage object from the curren `WriteIndex`. The `WriteIndex` will be updated to the next bit after the last bit written. |
 | `void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, bool writeLeft = true)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `writeLeft` parameter specifies whether the value will be written big-endian(left) or little-endian(right). The `WriteIndex` will be updated to the next bit after the last bit written. |
 | `void Write<T>(T bits, int? bitsToWrite = null, bool writeLeft = true)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `writeLeft` parameter specifies whether the value will be written big-endian(left) or little-endian(right). The `WriteIndex` will be updated to the next bit after the last bit written. |
 
+#### Constructor Examples
+```csharp
+// creates an empty BitStorage object
+BitStorage bs = new BitStorage();
+
+// creates a BitStorage object with 0b10100000 as the first element with a length of 3 bits
+BitStorage bs = new BitStorage(new List<bool> { true, false, true });
+
+// creates a BitStorage object with 0b01111011, 0b00101010, 0b00000011 as the first elements
+BitStorage bs = new BitStorage(new List<byte> { 123, 42, 3 });
+```
+
+#### Full Example
+```csharp
+// set up the test data
+BitStorage bitStorage = new();
+byte individualByte1 = 73;
+int individualByte2Size = 5;
+byte individualByte2 = 27;
+byte[] bytes = [235, 83, 192, 48, 12, 192, 115, 78];
+
+// write the boolean test data
+bitStorage.Write(true);
+bitStorage.Write(false);
+bitStorage.Write(true);
+bitStorage.Write(true);
+// write the first individual byte test data
+bitStorage.Write(individualByte1, writeLeft:false);
+// write the test array data
+bitStorage.Write(bytes);
+// write the second individual byte
+bitStorage.Write(individualByte2, individualByte2Size, writeLeft: false);
+
+// read the test boolean data
+bool boolValue = bitStorage.Read<bool>();
+Console.WriteLine($"Bit Read: {boolValue}");
+boolValue = bitStorage.Read<bool>();
+Console.WriteLine($"Bit Read: {boolValue}");
+boolValue = bitStorage.Read<bool>();
+Console.WriteLine($"Bit Read: {boolValue}");
+boolValue = bitStorage.Read<bool>();
+Console.WriteLine($"Bit Read: {boolValue}");
+// read the first individual byte
+Console.WriteLine($"Byte Manually Read: {ToBinary(bitStorage.Read<byte>(), 8)}\t Byte Expected: {ToBinary(individualByte1, 8)}");
+// variable to hold the number of bits read
+BitStorage.BitsRead bitsReadObject = new();
+int count = 0;
+foreach (var byteRead in bitStorage.ReadEnumerable<byte>(8*bytes.Length + 8, bitsRead: bitsReadObject))
+{
+	// convert the byte read to a binary string of length BitsReadCount
+	string byteReadString = ToBinary(byteRead, 8)[0..bitsReadObject.BitsReadCount];
+	// convert the expected byte to a binary string of length BitsReadCount and compare it to the array, or last individual byte
+	string byteExpectedString = ToBinary(count < bytes.Length ? bytes[count] : individualByte2, bitsReadObject.BitsReadCount);
+	Console.WriteLine($"Byte Read: {byteReadString}\t Byte Expected: {byteExpectedString}\tNum Bits Read: {bitsReadObject.BitsReadCount}");
+	count++;
+}
+Console.WriteLine("Reading raw data");
+// reset the read index to the beginning, read all the bytes and print them
+bitStorage.ReadIndex = 0;
+foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject))
+{
+	Console.WriteLine(ToBinary(byteRead, 8)[0..bitsReadObject.BitsReadCount]);
+}
+```
