@@ -460,12 +460,12 @@ namespace GgoSoft.Storage
 		/// and the next 3 bits are 0b101, the out variable will be 0b10100000
 		/// </summary>
 		/// <typeparam name="T">The data type of the number holding the bits to be written</typeparam>
-		/// <param name="bits">The value of the bits read.</param>
+		/// <param name="bitsRead">The value of the bits read.</param>
 		/// <param name="bitsToRead">The number of bits to read. Must be between 0 and the maximum number of bits in <typeparamref name="T"/>.</param>
 		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <returns>The actual number of bits read.</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
-		public int Read<T>(out T bits, int? bitsToRead = null, bool readLeft = true) where T : struct
+		public int Read<T>(out T bitsRead, int? bitsToRead = null, bool readLeft = true) where T : struct
 		{
 			if (typeof(T) == typeof(bool))
 			{
@@ -476,12 +476,12 @@ namespace GgoSoft.Storage
 				}
 				if(bitsToRead == 0)
 				{
-					bits = default;
+					bitsRead = default;
 					LastReadBitCount = 0;
 					return 0;
 				}
 				bool returnBool = ReadBool();
-				bits = (T)Convert.ChangeType(returnBool, typeof(bool));
+				bitsRead = (T)Convert.ChangeType(returnBool, typeof(bool));
 				return LastReadBitCount;
 			}
 			LastReadBitCount = 0;
@@ -529,7 +529,7 @@ namespace GgoSoft.Storage
 			{
 				tempReturnValue <<= typeLength - returnBits;
 			}
-			bits = (T)Convert.ChangeType(tempReturnValue, typeof(T));
+			bitsRead = (T)Convert.ChangeType(tempReturnValue, typeof(T));
 			LastReadBitCount = returnBits;
 			return returnBits;
 		}
