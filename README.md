@@ -145,3 +145,7 @@ foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject
 	Console.WriteLine(ToBinary(byteRead, 8)[0..bitsReadObject.BitsReadCount]);
 }
 ```
+
+In the previous example, the last loop could have used `bitStorage.GetData()` in conjunction with the `Count` 
+property.  The number of bits for each byte would have to be calculated (all would have 8 bits, but the last
+one may have fewer).
