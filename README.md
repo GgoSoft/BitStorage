@@ -146,6 +146,36 @@ foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject
 }
 ```
 
+Output
+```
+Bit Read: True
+Bit Read: False
+Bit Read: True
+Bit Read: True
+Byte Manually Read: 01001001     Byte Expected: 01001001
+Byte Read: 11101011      Byte Expected: 11101011        Num Bits Read: 8
+Byte Read: 01010011      Byte Expected: 01010011        Num Bits Read: 8
+Byte Read: 11000000      Byte Expected: 11000000        Num Bits Read: 8
+Byte Read: 00110000      Byte Expected: 00110000        Num Bits Read: 8
+Byte Read: 00001100      Byte Expected: 00001100        Num Bits Read: 8
+Byte Read: 11000000      Byte Expected: 11000000        Num Bits Read: 8
+Byte Read: 01110011      Byte Expected: 01110011        Num Bits Read: 8
+Byte Read: 01001110      Byte Expected: 01001110        Num Bits Read: 8
+Byte Read: 11011         Byte Expected: 11011   Num Bits Read: 5
+Reading raw data
+10110100
+10011110
+10110101
+00111100
+00000011
+00000000
+11001100
+00000111
+00110100
+11101101
+1
+```
+
 In the previous example, the last loop could have used `bitStorage.GetData()` in conjunction with the `Count` 
 property.  The number of bits for each byte would have to be calculated (all would have 8 bits, but the last
 one may have fewer).
