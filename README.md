@@ -19,8 +19,7 @@ I was debating on how to store the underlying bits.  I finally settled for a lis
 can easily be changed to a list of other numeric types, but I haven't tried.  The storage is also big-endian,
 meaning that if you push 0b1, it will be stored as 0b10000000, not 0b00000001.  Adding 0b011 will result in
 0b10110000.  This is because I wanted to be able to read the bits back in the same order that they were written
-and not have the underlying storage change.  There is a property that will allow you to change the 
-endianness of the bits to be read or written, but the underlying storage will always be big-endian.
+and not have the underlying storage change.
 
 I could have shifted the bits in (e.g. add 0b1 and getting 0b00000001, then 0b011 and getting 0b00001011), but 
 that would mean that the individual locations of the bits would potentially change after every write and I 
@@ -66,20 +65,20 @@ should be pushed in.  It was easier to just not allow negative numbers.  I may r
 | `int WriteIndex` | Gets or sets the index of the next bit to write. Valid values are 0 to `Count`. Technically, a `WriteIndex` of `Count` isn't valid, but after writing the last bit, it will be set to `Count`. Any bits that are written after this will be invalid. |
 | `bool Item[int]` | Gets or sets the specific bit at the specified index. The index is 0-based and valid values are 0 to `Count - 1`. The value is a boolean, so it can be true or false. If the index is out of range, an exception will be thrown. |
 | `bool[] Item[Range]` | Gets or sets the specific bits at the specified range. The range is 0-based and valid values are 0 to `Count - 1` for the start range and `Count` for the end range. The value is a boolean array, so items can be true or false. If the range is out of range, an exception will be thrown. |
-| `bool BigEndian` | Gets or sets the value of the `BigEndian` property. This specifies whether the bits will be stored big-endian (true) or little-endian (false) if unspecified in the various read/write methods. The default is true. |
+
 
 ### Methods
 | Method | Description |
 | ------ | ----------- |
 | `void Clear()` | Clears the BitStorage object and resets all indicies. |
 | `IEnumerable<byte> GetData()` | Returns all the data stored as an Enumerable of bytes. This returns all the data and is independant of the 'ReadIndex'|
-| `IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null, bool? readLeft = null)` | Returns an enumerable of the next `bitsToRead` bits. This will return the bits in the order they were written. The `ReadIndex` will be updated to the next bit after the last bit read. For every enumberable element, the `LastReadBitCount` property will be updated. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. If `bitsRead` is not null, the `BitsReadCount` will be updated on that object. The `readLeft` parameter specifies whether the value will be read big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. |
-| `T Read<T>(out int bitsReadCount, bool? readLeft = null)` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsReadCount` parameter will be set to the number of bits that were read. The `readLeft` parameter specifies whether the value will be read big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. |
-| `T Read<T>(bool? readLeft = null)` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read.  The number of bits read will have to be assumed by the calling program, or use the `LastReadBitCount` property. The `readLeft` parameter specifies whether the value will be read big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. |
-| `int Read<T>(out T bitsRead, int? bitsToRead = null, bool readLeft = true)` | Reads the next `bitsToRead` bits and stores them in `bitsRead`. The return value is the number of bits read. `readLeft` specifies whether the `bitsRead` will be big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. |
+| `IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null)` | Returns an enumerable of the next `bitsToRead` bits. This will return the bits in the order they were written. The `ReadIndex` will be updated to the next bit after the last bit read. For every enumberable element, the `LastReadBitCount` property will be updated. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. If `bitsRead` is not null, the `BitsReadCount` will be updated on that object. |
+| `T Read<T>(out int bitsReadCount)` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsReadCount` parameter will be set to the number of bits that were read. |
+| `T Read<T>()` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read.  The number of bits read will have to be assumed by the calling program, or use the `LastReadBitCount` property. |
+| `int Read<T>(out T bitsRead, int? bitsToRead = null)` | Reads the next `bitsToRead` bits and stores them in `bitsRead`. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. |
 | `void Write(BitStorage bits)` | Writes the BitStorage object to the current BitStorage object from the current `WriteIndex`. The `WriteIndex` will be updated to the next bit after the last bit written. |
-| `void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, bool? writeLeft = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `writeLeft` parameter specifies whether the value to be written is big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. The `WriteIndex` will be updated to the next bit after the last bit written. |
-| `void Write<T>(T bits, int? bitsToWrite = null, bool writeLeft = true)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `writeLeft` parameter specifies whether the value to be written is big-endian(left) or little-endian(right). If null, the value of the `BigEndian` property will be used. The `WriteIndex` will be updated to the next bit after the last bit written. |
+| `void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `WriteIndex` will be updated to the next bit after the last bit written. |
+| `void Write<T>(T bits, int? bitsToWrite = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `WriteIndex` will be updated to the next bit after the last bit written. |
 
 #### Constructor Examples
 ```csharp
@@ -97,9 +96,6 @@ BitStorage bs = new BitStorage(new List<byte> { 123, 42, 3 });
 ```csharp
 // set up the test data
 BitStorage bitStorage = new();
-// Setting BigEndian to false would make this code easier to read, but wouldn't accurately represent the data
-// Making this true shows how to access the data
-bitStorage.BigEndian = true; // already defaulted to true, this is just a reminder
 byte individualByte1 = 73;
 int individualByte2Size = 5;
 byte individualByte2 = 27;
@@ -111,11 +107,11 @@ bitStorage.Write(false);
 bitStorage.Write(true);
 bitStorage.Write(true);
 // write the first individual byte test data
-bitStorage.Write(individualByte1, writeLeft:false);
+bitStorage.Write(individualByte1);
 // write the test array data
 bitStorage.Write(bytes);
 // write the second individual byte
-bitStorage.Write(individualByte2, individualByte2Size, writeLeft: false);
+bitStorage.Write(individualByte2, individualByte2Size);
 
 // read the test boolean data
 bool boolValue = bitStorage.Read<bool>();
@@ -133,8 +129,7 @@ BitStorage.BitsRead bitsReadObject = new();
 int count = 0;
 foreach (var byteRead in bitStorage.ReadEnumerable<byte>(8*bytes.Length + 8, bitsRead: bitsReadObject))
 {
-	// convert the byteRead to little-endian, setting "writeLeft" in "ReadEnumerable" to false would also make it little-endian
-	string byteReadString = ToBinary(byteRead >> (8-bitsReadObject.BitsReadCount), bitsReadObject.BitsReadCount);
+	string byteReadString = ToBinary(byteRead, bitsReadObject.BitsReadCount);
 	// convert the expected byte to a binary string of length BitsReadCount and compare it to the array, or last individual byte
 	string byteExpectedString = ToBinary(count < bytes.Length ? bytes[count] : individualByte2, bitsReadObject.BitsReadCount);
 	Console.WriteLine($"Byte Read: {byteReadString}\t Byte Expected: {byteExpectedString}   \tNum Bits Read: {bitsReadObject.BitsReadCount}");
@@ -145,8 +140,7 @@ Console.WriteLine("Reading raw data");
 bitStorage.ReadIndex = 0;
 foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject))
 {
-	// the byteRead is big-endian, but doesn't take up the full byte, so we need to remove the extra bits that aren't part of the storage
-	Console.WriteLine(ToBinary(byteRead, 8)[0..bitsReadObject.BitsReadCount]);
+	Console.WriteLine($"{ToBinary(byteRead, 8)}\tNum Bits Read: {bitsReadObject.BitsReadCount}" );
 }
 ```
 
@@ -167,19 +161,19 @@ Byte Read: 01110011      Byte Expected: 01110011        Num Bits Read: 8
 Byte Read: 01001110      Byte Expected: 01001110        Num Bits Read: 8
 Byte Read: 11011         Byte Expected: 11011           Num Bits Read: 5
 Reading raw data
-10110100
-10011110
-10110101
-00111100
-00000011
-00000000
-11001100
-00000111
-00110100
-11101101
-1
+10110100        Num Bits Read: 8
+10011110        Num Bits Read: 8
+10110101        Num Bits Read: 8
+00111100        Num Bits Read: 8
+00000011        Num Bits Read: 8
+00000000        Num Bits Read: 8
+11001100        Num Bits Read: 8
+00000111        Num Bits Read: 8
+00110100        Num Bits Read: 8
+11101101        Num Bits Read: 8
+00000001        Num Bits Read: 1	
 ```
 
 In the previous example, the last loop could have used `bitStorage.GetData()` in conjunction with the `Count` 
-property.  The number of bits for each byte would have to be calculated (all would have 8 bits, but the last
-one may have fewer).
+property.  The biggest difference is that the last number would be "10000000" instead of "00000001".  The number of 
+bits for each byte would have to be calculated (all would have 8 bits, but the last one may have fewer).

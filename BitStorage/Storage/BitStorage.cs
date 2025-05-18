@@ -371,7 +371,7 @@ namespace GgoSoft.Storage
 		}
 		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
 		// thrown until the enumeration is read
-		private IEnumerable<T> ReadEnumerable<T>(int bitsToRead, int typeLength, BitsRead? bitsRead = null, bool? readLeft = null) where T : struct
+		private IEnumerable<T> ReadEnumerable<T>(int bitsToRead, int typeLength, BitsRead? bitsRead = null) where T : struct
 		{
 			int numBytes = bitsToRead / typeLength;
 			int extraBits = bitsToRead % typeLength;
@@ -379,7 +379,7 @@ namespace GgoSoft.Storage
 			// Loop through the number of items to read, read the bits and yield return the value
 			for (int i = 0; i < end; i++)
 			{
-				int bitsReadCount = Read(out T returnValue, (i < numBytes ? typeLength : extraBits), readLeft);
+				int bitsReadCount = Read(out T returnValue, (i < numBytes ? typeLength : extraBits));
 				if (bitsRead != null)
 				{
 					bitsRead.BitsReadCount = bitsReadCount;
@@ -415,10 +415,9 @@ namespace GgoSoft.Storage
 		/// <typeparam name="T">The data type of the Enumerable elements</typeparam>
 		/// <param name="bitsToRead">The number of bits to read. Null will read all remaining bits</param>
 		/// <param name="bitsRead"> The number of bits read. This is used to get the number of bits read in the enumerable</param>
-		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <returns>An Enumerable of values representing the read bits</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null, bool? readLeft = null) where T : struct
+		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null) where T : struct
 		{
 			if (bitsToRead < 0)
 			{
@@ -432,7 +431,7 @@ namespace GgoSoft.Storage
 			{
 				throw new ArgumentOutOfRangeException($"Type {tType} is not supported");
 			}
-			return ReadEnumerable<T>(bitsToRead ?? Count - ReadBitIndex, typeLength, bitsRead, readLeft);
+			return ReadEnumerable<T>(bitsToRead ?? Count - ReadBitIndex, typeLength, bitsRead);
 		}
 		/// <summary>
 		/// Wrapper method for <see cref="Read{T}(out T, int, bool)"/> to read a single value of type T and return that directly instead
@@ -441,9 +440,9 @@ namespace GgoSoft.Storage
 		/// <param name="bitsReadCount">Out parameter with the number of bits actually read</param>
 		/// <typeparam name="T">The data type to be read, this assumes the # of bits to be read is the length of T</typeparam>
 		/// <returns>The value read</returns>
-		public T Read<T>(out int bitsReadCount, bool? readLeft = null) where T : struct
+		public T Read<T>(out int bitsReadCount) where T : struct
 		{
-			bitsReadCount = Read(out T returnValue, readLeft: readLeft);
+			bitsReadCount = Read(out T returnValue);
 			return returnValue;
 		}
 		/// <summary>
@@ -451,23 +450,21 @@ namespace GgoSoft.Storage
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
 		/// <returns></returns>
-		public T Read<T>(bool? readLeft = null) where T : struct
+		public T Read<T>() where T : struct
 		{
-			return Read<T>(out _, readLeft);
+			return Read<T>(out _);
 		}
 		/// <summary>
-		/// Reads a specified number of bits from the storage and returns them as the out variable.  The bits will be returned big-endian,
-		/// so the left most bits will contain the bits returned, unless <paramref name="writeLeft"/> is set to false.  
+		/// Reads a specified number of bits from the storage and returns them as the out variable.  
 		/// E.g. if the <paramref name="bitsToRead"/> is 3, <typeparamref name="T"/> is a byte, 
 		/// and the next 3 bits are 0b101, the out variable will be 0b10100000
 		/// </summary>
 		/// <typeparam name="T">The data type of the number holding the bits to be written</typeparam>
 		/// <param name="bitsRead">The value of the bits read.</param>
 		/// <param name="bitsToRead">The number of bits to read. Must be between 0 and the maximum number of bits in <typeparamref name="T"/>.</param>
-		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <returns>The actual number of bits read.</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
-		public int Read<T>(out T bitsRead, int? bitsToRead = null, bool? readLeft = null) where T : struct
+		public int Read<T>(out T bitsRead, int? bitsToRead = null) where T : struct
 		{
 			if (typeof(T) == typeof(bool))
 			{
@@ -526,11 +523,6 @@ namespace GgoSoft.Storage
 				ReadBitIndex -= tempLength;
 				tempBits -= tempLength;
 			}
-			// Adjust the temp return value so the bits are on the left side, instead of the right
-			if (readLeft ?? BigEndian)
-			{
-				tempReturnValue <<= typeLength - returnBits;
-			}
 			bitsRead = (T)Convert.ChangeType(tempReturnValue, typeof(T));
 			LastReadBitCount = returnBits;
 			return returnBits;
@@ -542,7 +534,26 @@ namespace GgoSoft.Storage
 		/// <param name="bits">The BitStorage instance containing the bits to write.</param>
 		public void Write(BitStorage bits)
 		{
-			Write(bits.GetData(), bits.Count, true);
+			int extraBits = bits.Count % StorageElementLength;
+			// don't do anything if the data is empty
+			if (bits.data.Count > 0)
+			{
+				// if the number of bits is a multiple of the storage element length, write the whole data
+				if (extraBits == 0)
+				{
+					Write(bits.data);
+				}
+				else
+				{
+					// if the number of bits is not a multiple of the storage element length, write all but
+					// the last element and then write the last element converted to big endian
+					for (int i = 0; i < bits.data.Count - 1; i++)
+					{
+						Write(bits.data[i]);
+					}
+					Write(bits.data[^1] >> StorageElementLength - extraBits, extraBits);
+				}
+			}
 		}
 		/// <summary>
 		/// Writes a single bit to the storage.
@@ -569,7 +580,7 @@ namespace GgoSoft.Storage
 		/// <param name="bits">The elements to be added</param>
 		/// <param name="bitsToWrite">How many bits of the Enumerable to be written, all of them if null</param>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, bool? writeLeft = null) where T : struct
+		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null) where T : struct
 		{
 			if(bitsToWrite < 0)
 			{
@@ -593,7 +604,7 @@ namespace GgoSoft.Storage
 					// wroteLast is used to determine if the last value was written, so that the last value can be written if it is not a multiple of the number of bits
 					if (i % bitLength == 0)
 					{
-						Write(value, bitLength, false);
+						Write(value, bitLength);
 						value = 0;
 						wroteLast = true;
 					}
@@ -611,7 +622,7 @@ namespace GgoSoft.Storage
 				// If the last value was not written, write the last value
 				if (!wroteLast)
 				{
-					Write(value, i % bitLength, false);
+					Write(value, i % bitLength);
 				}
 			}
 			else
@@ -635,7 +646,7 @@ namespace GgoSoft.Storage
 						bitLength = extraBits;
 
 					}
-					Write(value, bitLength, writeLeft);
+					Write(value, bitLength);
 					i++;
 					// If the length is specified and the end of the data is reached, break out of the loop
 					// Doing this instead of a "for" loop because if the length is not given, the enumeration
@@ -648,15 +659,13 @@ namespace GgoSoft.Storage
 			}
 		}
 		/// <summary>
-		/// Writes the specified bits to the storage.  The bits are written in big-endian order, so the left-most bits are written first up
-		/// to the <paramref name="bitsToWrite"/> and the rest of the bits (if any) on the right are ignored, unless <paramref name="writeLeft"/> is set to false.
+		/// Writes the specified bits to the storage.
 		/// </summary>
 		/// <typeparam name="T">The data type of the number holding the bits to be written</typeparam>
 		/// <param name="bits">The bits to write.</param>
 		/// <param name="bitsToWrite">The number of bits to write.</param>
-		/// <param name="readLeft">True if the bits should be read from the left, false if they should be read from the right.</param>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>
-		public void Write<T>(T bits, int? bitsToWrite = null, bool? writeLeft = null) where T : struct
+		public void Write<T>(T bits, int? bitsToWrite = null) where T : struct
 		{
 			// Edge case for boolean values.
 			if (bits is bool boolBit)
@@ -691,12 +700,6 @@ namespace GgoSoft.Storage
 			// tempBits holds the bits to be stored.  The bits will be removed (shifted) as they are written
 			// The bits are converted to a ulong so they can be manipulated easier
 			ulong tempBits = (ulong)Convert.ChangeType(bits, typeof(ulong));
-			// The bits are "big-endian" so the left-most bits are the first to be written, but this process is "little-endian", so 
-			// The temp bits need to be shifted to the right.  The extra bits will be shifted off, but they wouldn't be written anyway
-			if (writeLeft ?? BigEndian)
-			{
-				tempBits >>= typeLength - tempLength;
-			}
 			// This is probably not needed, but mask off the extra bits just in case
 			tempBits &= mask;
 			// The written bits may not align with the storage element boundaries.  This loop will write the number of bits available in the current
@@ -734,8 +737,6 @@ namespace GgoSoft.Storage
 			}
 		}
 
-		// If true, the bits are read from the left, otherwise from the right
-		public bool BigEndian { get; set; } = true; 
 		// Number of bits read in the last read operation
 		public int LastReadBitCount { get; private set; } = 0; 
 
