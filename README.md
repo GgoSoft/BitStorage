@@ -142,6 +142,12 @@ foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject
 {
 	Console.WriteLine($"{ToBinary(byteRead, 8)}\tNum Bits Read: {bitsReadObject.BitsReadCount}" );
 }
+
+// Helper method to convert an int to a binary string of a specific length
+private static string ToBinary(int value, int length)
+{
+	return Convert.ToString(value, 2).PadLeft(length, '0');
+}
 ```
 
 Output
