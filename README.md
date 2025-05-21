@@ -1,10 +1,10 @@
 # BitStorage
 ## Info
 
-I was working on another personal project (nothing big, just a "for fun" project) and I had to store a lot 
-of bits. I thought it would be interesting to create a bit storage system that could store bits in a more
-efficient and easier way than using a byte array or BitArray. My requirements were that I wanted to push an 
-arbitrary number of bits and be able to read them all or just a few bits at a time.
+I was working on another personal project (nothing big, just a for fun project to keep my skills up) and I 
+had to store a lot of bits. I thought it would be interesting to create a bit storage system that could store 
+bits in a more efficient and easier way than using a byte array or BitArray. My requirements were that I 
+wanted to push an arbitrary number of bits and be able to read them all or just a few bits at a time.
 
 As an example, I may want to store 3 bits, then 15 bits, then 87 bits, then 1 bit, then 2 bits, etc. and
 be able to store all of them somewhere (file, memory, etc.). Later, I want to read all of them back in, then
@@ -23,12 +23,16 @@ and not have the underlying storage change.
 
 I could have shifted the bits in (e.g. add 0b1 and getting 0b00000001, then 0b011 and getting 0b00001011), but 
 that would mean that the individual locations of the bits would potentially change after every write and I 
-didn't want that. The annoying thing about this is that if you want to push 0b1, you have to push 0b10000000, unless you change the endianness.
+didn't want that. It doesn't have much effect on anything, except if you read the data using GetData(), you
+would see the exact data on the last byte written, not the converted data that ReadEnumerable<T>() would give you.
+GetData() is faster than ReadEnumerable<T>() because it doesn't have to loop through each element, it just returns
+a copy of the underlying byte list.  ReadEnumerable<T>() has the benefit of being able to read a specific number 
+of bits, starting with the current ReadIndex.
 
 Another limitation is that negative numbers are not allowed, only positive numbers.  This is because I wanted to
 keep the code simple and not have to deal with negative numbers.  I may add this in the future, but for now,
 I just wanted to keep it simple.  I also wanted to keep the code as fast as possible.  There is also the issue
-of not using all the bits, so a negative number was added and number of bits was less than the data type, what
+of not using all the bits, so if a negative number was added and number of bits was less than the data type, what
 should be pushed in.  It was easier to just not allow negative numbers.  I may revisit this in the future.
 
 ## Usage
@@ -36,7 +40,7 @@ should be pushed in.  It was easier to just not allow negative numbers.  I may r
 
 | Class | Description |
 | ----- | ----------- |
-| BitStorage.BitsRead | Contains a single int called 'BitsReadCount'.  This is another hack (similar to 'LastReadBitCount'). When reading through the enumerable, if an object of this type has been sent to the method, the 'BitsReadCount' will be updated.  The reason for this is a yield return doesn't allow multiple values, out, or ref objects. |
+| BitStorage.BitsRead | Contains a single int called 'BitsReadCount'.  This is a hack (similar to 'LastReadBitCount'). When reading through the enumerable, if an object of this type has been sent to the method, the 'BitsReadCount' will be updated.  The reason for this is a yield return doesn't allow multiple values, out, or ref objects. |
 
 ### Constructors
 
