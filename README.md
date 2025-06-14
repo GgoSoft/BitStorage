@@ -110,6 +110,9 @@ BitStorage bs = new BitStorage(new List<bool> { true, false, true });
 
 // creates a BitStorage object with 0b01111011, 0b00101010, 0b00000011 as the first elements
 BitStorage bs = new BitStorage(new List<byte> { 123, 42, 3 });
+
+// creates a BitStorage object with the string "Hello World!" with 8 bits per character, for a total of 96 bits
+BitStorage bs = new BitStorage("Hello World!", elementBitsToWrite: 8);
 ```
 
 #### Full Example
@@ -120,6 +123,7 @@ byte individualByte1 = 73;
 int individualByte2Size = 5;
 byte individualByte2 = 27;
 byte[] bytes = [235, 83, 192, 48, 12, 192, 115, 78];
+string testString = "Hello, World!";
 
 // write the boolean test data
 bitStorage.Write(true);
@@ -128,9 +132,10 @@ bitStorage.Write(true);
 bitStorage.Write(true);
 // write the first individual byte test data
 bitStorage.Write(individualByte1);
-// write the test array data
-bitStorage.Write(bytes);
-// write the second individual byte
+// write the test array data, but only write 8 bits per element
+bitStorage.Write(testString, elementBitsToWrite: 8); // default would be 16 bits for char data
+bitStorage.Write(bytes); // default is 8 bits for byte types
+// write the second individual byte with only 5 bits
 bitStorage.Write(individualByte2, individualByte2Size);
 
 // read the test boolean data
@@ -147,14 +152,36 @@ Console.WriteLine($"Byte Manually Read: {ToBinary(bitStorage.Read<byte>(), 8)}\t
 // variable to hold the number of bits read
 BitStorage.BitsRead bitsReadObject = new();
 int count = 0;
-foreach (var byteRead in bitStorage.ReadEnumerable<byte>(8*bytes.Length + 8, bitsRead: bitsReadObject))
+Console.WriteLine("Reading 8 bit character data:");
+// read the test string, which is 8 bits per character, and print each byte read
+foreach (var byteRead in bitStorage.ReadEnumerable<byte>(8 * testString.Length, bitsRead: bitsReadObject))
 {
+	// Since these were all 8 bits, we don't need to check the BitsReadCount, but this is an example of how to use it
 	string byteReadString = ToBinary(byteRead, bitsReadObject.BitsReadCount);
-	// convert the expected byte to a binary string of length BitsReadCount and compare it to the array, or last individual byte
-	string byteExpectedString = ToBinary(count < bytes.Length ? bytes[count] : individualByte2, bitsReadObject.BitsReadCount);
+	// convert the expected byte to a binary string of length BitsReadCount and compare it to the array
+	string byteExpectedString = ToBinary(testString[count], bitsReadObject.BitsReadCount);
+	Console.WriteLine($"Byte/Char Read: {byteReadString}/{(char)byteRead}\t Byte/Char Expected: {byteExpectedString}/{testString[count]}   \tNum Bits Read: {bitsReadObject.BitsReadCount}");
+	count++;
+}
+count = 0;
+Console.WriteLine("Reading 8 bit byte data:");
+// read the test string, which is 8 bits per character, and print each byte read
+foreach (var byteRead in bitStorage.ReadEnumerable<byte>(8 * bytes.Length, bitsRead: bitsReadObject))
+{
+	// Since these were all 8 bits, we don't need to check the BitsReadCount, but this is an example of how to use it
+	string byteReadString = ToBinary(byteRead, bitsReadObject.BitsReadCount);
+	// convert the expected byte to a binary string of length BitsReadCount and compare it to the array
+	string byteExpectedString = ToBinary(bytes[count], bitsReadObject.BitsReadCount);
 	Console.WriteLine($"Byte Read: {byteReadString}\t Byte Expected: {byteExpectedString}   \tNum Bits Read: {bitsReadObject.BitsReadCount}");
 	count++;
 }
+Console.WriteLine($"Reading last manual byte (written as {individualByte2Size} bits)");
+int bitsRead = bitStorage.Read(out byte byteRead2);
+string byteReadString2 = ToBinary(byteRead2, bitsRead);
+string byteExpectedString2 = ToBinary(individualByte2, individualByte2Size);
+Console.WriteLine($"Byte Read: {byteReadString2}\t Byte Expected: {byteExpectedString2}   \tNum Bits Read: {bitsRead}");
+
+
 Console.WriteLine("Reading raw data");
 // reset the read index to the beginning, read all the bytes and print them
 bitStorage.ReadIndex = 0;
@@ -163,11 +190,6 @@ foreach (var byteRead in bitStorage.ReadEnumerable<byte>(bitsRead:bitsReadObject
 	Console.WriteLine($"{ToBinary(byteRead, 8)}\tNum Bits Read: {bitsReadObject.BitsReadCount}" );
 }
 
-// Helper method to convert an int to a binary string of a specific length
-private static string ToBinary(int value, int length)
-{
-	return Convert.ToString(value, 2).PadLeft(length, '0');
-}
 ```
 
 Output
@@ -177,6 +199,21 @@ Bit Read: False
 Bit Read: True
 Bit Read: True
 Byte Manually Read: 01001001     Byte Expected: 01001001
+Reading 8 bit character data:
+Byte/Char Read: 01001000/H       Byte/Char Expected: 01001000/H         Num Bits Read: 8
+Byte/Char Read: 01100101/e       Byte/Char Expected: 01100101/e         Num Bits Read: 8
+Byte/Char Read: 01101100/l       Byte/Char Expected: 01101100/l         Num Bits Read: 8
+Byte/Char Read: 01101100/l       Byte/Char Expected: 01101100/l         Num Bits Read: 8
+Byte/Char Read: 01101111/o       Byte/Char Expected: 01101111/o         Num Bits Read: 8
+Byte/Char Read: 00101100/,       Byte/Char Expected: 00101100/,         Num Bits Read: 8
+Byte/Char Read: 00100000/        Byte/Char Expected: 00100000/          Num Bits Read: 8
+Byte/Char Read: 01010111/W       Byte/Char Expected: 01010111/W         Num Bits Read: 8
+Byte/Char Read: 01101111/o       Byte/Char Expected: 01101111/o         Num Bits Read: 8
+Byte/Char Read: 01110010/r       Byte/Char Expected: 01110010/r         Num Bits Read: 8
+Byte/Char Read: 01101100/l       Byte/Char Expected: 01101100/l         Num Bits Read: 8
+Byte/Char Read: 01100100/d       Byte/Char Expected: 01100100/d         Num Bits Read: 8
+Byte/Char Read: 00100001/!       Byte/Char Expected: 00100001/!         Num Bits Read: 8
+Reading 8 bit byte data:
 Byte Read: 11101011      Byte Expected: 11101011        Num Bits Read: 8
 Byte Read: 01010011      Byte Expected: 01010011        Num Bits Read: 8
 Byte Read: 11000000      Byte Expected: 11000000        Num Bits Read: 8
@@ -185,10 +222,24 @@ Byte Read: 00001100      Byte Expected: 00001100        Num Bits Read: 8
 Byte Read: 11000000      Byte Expected: 11000000        Num Bits Read: 8
 Byte Read: 01110011      Byte Expected: 01110011        Num Bits Read: 8
 Byte Read: 01001110      Byte Expected: 01001110        Num Bits Read: 8
+Reading last manual byte (written as 5 bits)
 Byte Read: 11011         Byte Expected: 11011           Num Bits Read: 5
 Reading raw data
 10110100        Num Bits Read: 8
-10011110        Num Bits Read: 8
+10010100        Num Bits Read: 8
+10000110        Num Bits Read: 8
+01010110        Num Bits Read: 8
+11000110        Num Bits Read: 8
+11000110        Num Bits Read: 8
+11110010        Num Bits Read: 8
+11000010        Num Bits Read: 8
+00000101        Num Bits Read: 8
+01110110        Num Bits Read: 8
+11110111        Num Bits Read: 8
+00100110        Num Bits Read: 8
+11000110        Num Bits Read: 8
+01000010        Num Bits Read: 8
+00011110        Num Bits Read: 8
 10110101        Num Bits Read: 8
 00111100        Num Bits Read: 8
 00000011        Num Bits Read: 8
