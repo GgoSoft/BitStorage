@@ -56,7 +56,7 @@ of the string, you would set `bitsToWrite` to 16.
 
 ```csharp
 // This will write the first 2 characters of the string "Hello World" as 8 bits each, for a total of 16 bits.
-bitStorage.Write("Hello World", bitsToWrite: 16, elementBitsToWrite: 8);
+new BitStorage("Hello World", bitsToWrite: 16, elementBitsToWrite: 8);
 ```
 
 
