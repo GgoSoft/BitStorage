@@ -29,6 +29,7 @@ namespace GgoSoft.Storage
 			KeyValuePair.Create( typeof(ulong), sizeof(ulong) * 8),
 			KeyValuePair.Create( typeof(uint), sizeof(uint) * 8),
 			KeyValuePair.Create( typeof(ushort), sizeof(ushort) * 8),
+			KeyValuePair.Create( typeof(char), sizeof(char) * 8),
 			KeyValuePair.Create( typeof(byte), sizeof(byte) * 8),
 			KeyValuePair.Create( typeof(long), sizeof(long) * 8 - 1), // ignore negatives for signed types
 			KeyValuePair.Create( typeof(int), sizeof(int) * 8 - 1),
@@ -55,7 +56,7 @@ namespace GgoSoft.Storage
 		{
 		}
 		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
+		/// Makes a copy of the specified BitStorage instance.
 		/// </summary>
 		/// <param name="bits">The initial data to store</param>
 		public BitStorage(BitStorage bits)
@@ -66,73 +67,136 @@ namespace GgoSoft.Storage
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<bool> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable.
+		/// This must be a non-negative value.  If this is null or greater than the number of bits
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<bool> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<byte> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>		
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<byte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<sbyte> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<sbyte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<short> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<short> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<ushort> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<ushort> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<int> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<int> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<uint> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<uint> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<long> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<long> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with the specified data.
 		/// </summary>
 		/// <param name="bits">The initial data to store.</param>
-		public BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null)
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
+		/// This must be a non-negative value.  If this is null or greater than the number of bits 
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
 		{
-			this.Write(bits, bitsToWrite);
+			this.Write(bits, bitsToWrite, elementBitsToWrite);
 		}
 
 		/// <summary>
@@ -578,14 +642,24 @@ namespace GgoSoft.Storage
 		/// </summary>
 		/// <typeparam name="T">The data type of the Enumerable elements</typeparam>
 		/// <param name="bits">The elements to be added</param>
-		/// <param name="bitsToWrite">How many bits of the Enumerable to be written, all of them if null</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null) where T : struct
+		/// <param name="bitsToWrite">The total number of bits to write from the enumerable.
+		/// This must be a non-negative value.  If this is null or greater than the number of bits
+		/// total in the enum, all the bits will be written.</param>
+		/// <param name="elementBitsToWrite">The number of bits for each element to write.
+		/// This must be a non-negative value. If this is null or greater than the number of bits in
+		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
+		/// <exception cref="ArgumentException">Thrown if the type is not valid</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null) where T : struct
 		{
 			if(bitsToWrite < 0)
 			{
-				throw new ArgumentOutOfRangeException(nameof(bitsToWrite));
+				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), bitsToWrite, "Cannot be less than 0");
 			}
+			if (elementBitsToWrite < 0)
+			{
+				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), elementBitsToWrite, "Cannot be less than 0");
+			}           
 			// special edge case for boolean values.  This will take the boolean values, create a ulong with the appropriate bits
 			// set and call the generic <see cref="Write{T}(IEnumerable{T}, int?)"/> method to write the bits.
 			if (typeof(T) == typeof(bool))
@@ -629,19 +703,24 @@ namespace GgoSoft.Storage
 			{
 				if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
 				{
-					throw new ArgumentOutOfRangeException($"Type {typeof(T)} is not supported");
+					throw new ArgumentException($"Type {typeof(T)} is not supported");
+				}
+				// If the elementBitsToWrite is specified, use that, otherwise use the type length
+				if (elementBitsToWrite < typeLength)
+				{
+					typeLength = (int)elementBitsToWrite;
 				}
 				// The length of bits to be written, if null, use a negative value to indicate all bits
 				int dataLength = bitsToWrite ?? -typeLength;
-				int numBytes = dataLength / typeLength;
+				int numElements = dataLength / typeLength;
 				int extraBits = dataLength % typeLength;
-				int end = extraBits == 0 ? numBytes : numBytes + 1;
+				int end = extraBits == 0 ? numElements : numElements + 1;
 				int i = 0;
 				foreach (var value in bits)
 				{
 					// bitLength will be the size of the number until the last number, which will be the extra bits
 					int bitLength = typeLength;
-					if (i == numBytes)
+					if (i == numElements)
 					{
 						bitLength = extraBits;
 

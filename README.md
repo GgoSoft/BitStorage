@@ -43,20 +43,36 @@ should be pushed in.  It was easier to just not allow negative numbers.  I may r
 | BitStorage.BitsRead | Contains a single int called 'BitsReadCount'.  This is a hack (similar to 'LastReadBitCount'). When reading through the enumerable, if an object of this type has been sent to the method, the 'BitsReadCount' will be updated.  The reason for this is a yield return doesn't allow multiple values, out, or ref objects. |
 
 ### Constructors
+Each IEnumerable constructor has 2 optional parameters: `bitsToWrite` and `elementBitsToWrite`. Each of these
+defaults to null, which means to write all bits.  In the case of `bitsToWrite`, it means to write all bits in
+the collection.  If this parameter is specified, it will only write that many bits from the collection. In the
+case of `elementBitsToWrite`, it means to write all bits in each element of the collection. If this parameter is
+specified, it will only write that many bits from each element of the collection with a total of `bitsToWrite`
+bits.
+
+E.g. a string is made up of 16 bit characters, so if you wanted to write only the first 8 bits of each character, 
+you would set `elementBitsToWrite` to 8. If you wanted to write only the first 2 characters at 8 bits/character
+of the string, you would set `bitsToWrite` to 16.
+
+```csharp
+// This will write the first 2 characters of the string "Hello World" as 8 bits each, for a total of 16 bits.
+bitStorage.Write("Hello World", bitsToWrite: 16, elementBitsToWrite: 8);
+```
+
 
 | Constructor | Description |
 | ----------- | ----------- |
 | `BitStorage()` | Creates an empty BitStorage object. |
 | `BitStorage(BitStorage bits)` | Creates a BitStorage object with the specified BitStorage object. This is a copy constructor. The `bits` parameter is the BitStorage object to copy. |
-| `BitStorage(IEnumerable<bool> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of booleans. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<byte> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of bytes. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<sbyte> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of sbytes. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<short> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of shorts. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<ushort> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of ushorts. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<int> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of ints. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<uint> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of uints. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<long> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of longs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
-| `BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null)` | Creates a BitStorage object with the specified collection of ulongs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.|
+| `BitStorage(IEnumerable<bool> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of booleans. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<byte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of bytes. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<sbyte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of sbytes. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<short> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of shorts. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<ushort> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of ushorts. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<int> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of ints. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<uint> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of uints. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<long> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of longs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
+| `BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Creates a BitStorage object with the specified collection of ulongs. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`.The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`|
 
 
 ### Properties
@@ -81,7 +97,7 @@ should be pushed in.  It was easier to just not allow negative numbers.  I may r
 | `T Read<T>()` | Reads the next number of bits based on the T data type. The `ReadIndex` will be updated to the next bit after the last bit read.  The number of bits read will have to be assumed by the calling program, or use the `LastReadBitCount` property. |
 | `int Read<T>(out T bitsRead, int? bitsToRead = null)` | Reads the next `bitsToRead` bits and stores them in `bitsRead`. The `ReadIndex` will be updated to the next bit after the last bit read. The `bitsToRead` parameter is optional and defaults to null, which means to read all bits. If `bitsToRead` is greater than the number of bits in the BitStorage object, it will read all remaining bits. |
 | `void Write(BitStorage bits)` | Writes the BitStorage object to the current BitStorage object from the current `WriteIndex`. The `WriteIndex` will be updated to the next bit after the last bit written. |
-| `void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `WriteIndex` will be updated to the next bit after the last bit written. |
+| `void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `elementBitsToWrite` parameter is also optional and defaults to null, which means to write all bits in each element of `bits`. The `WriteIndex` will be updated to the next bit after the last bit written. |
 | `void Write<T>(T bits, int? bitsToWrite = null)` | Writes the value to the BitStorage object. The `bitsToWrite` parameter is optional and defaults to null, which means to write all bits in `bits`. The `WriteIndex` will be updated to the next bit after the last bit written. |
 
 #### Constructor Examples
