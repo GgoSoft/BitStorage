@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace GgoSoft.Storage
 {
@@ -25,27 +27,27 @@ namespace GgoSoft.Storage
 		}
 		// This holds all the data types allowed and the size of them in bits
 		private static readonly ImmutableDictionary<Type, int> TypeLengths = ImmutableDictionary.CreateRange(
-		new List<KeyValuePair<Type, int>>() {
-			KeyValuePair.Create( typeof(ulong), sizeof(ulong) * 8),
-			KeyValuePair.Create( typeof(uint), sizeof(uint) * 8),
-			KeyValuePair.Create( typeof(ushort), sizeof(ushort) * 8),
-			KeyValuePair.Create( typeof(char), sizeof(char) * 8),
-			KeyValuePair.Create( typeof(byte), sizeof(byte) * 8),
-			KeyValuePair.Create( typeof(long), sizeof(long) * 8 - 1), // ignore negatives for signed types
-			KeyValuePair.Create( typeof(int), sizeof(int) * 8 - 1),
-			KeyValuePair.Create( typeof(short), sizeof(short) * 8 - 1),
-			KeyValuePair.Create( typeof(sbyte), sizeof(sbyte) * 8 - 1)
-		});
+			new KeyValuePair<Type, int>[] {
+				new ( typeof(ulong), sizeof(ulong) * 8),
+				new ( typeof(uint), sizeof(uint) * 8),
+				new ( typeof(ushort), sizeof(ushort) * 8),
+				new ( typeof(char), sizeof(char) * 8),
+				new ( typeof(byte), sizeof(byte) * 8),
+				new ( typeof(long), sizeof(long) * 8 - 1), // Only positive numbers are allowed, so -1
+				new ( typeof(int), sizeof(int) * 8 - 1), // Only positive numbers are allowed, so -1
+				new ( typeof(short), sizeof(short) * 8 - 1), // Only positive numbers are allowed, so -1
+				new ( typeof(sbyte), sizeof(sbyte) * 8 - 1) // Only positive numbers are allowed, so -1
+			});
 		// Index of the bit within the current byte being read. This will go down as each bit is read and will reset
 		// to the last bit of the next storage element if the read index is less than 0
 		private int _readBitIndex = StorageElementLength - 1;
 		// Index of the byte currently being read
-		private int _readByteIndex = 0;
+		private int _readByteIndex;
 		// Index of the bit within the current byte being written to. This will go down as each bit is written and
 		// will reset to the last bit of the next storage element if the write index is less than 0
 		private int _writeBitIndex = StorageElementLength - 1;
 		// Index of the byte currently being written to
-		private int _writeByteIndex = 0;
+		private int _writeByteIndex;
 		// List of bytes to store the bits
 		private readonly List<byte> data = new();
 
@@ -54,6 +56,7 @@ namespace GgoSoft.Storage
 		/// </summary>
 		public BitStorage()
 		{
+
 		}
 		/// <summary>
 		/// Makes a copy of the specified BitStorage instance.
@@ -63,142 +66,22 @@ namespace GgoSoft.Storage
 		{
 			this.Write(bits);
 		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable.
-		/// This must be a non-negative value.  If this is null or greater than the number of bits
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<bool> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>		
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<byte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<sbyte> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<short> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<ushort> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<int> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<uint> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<long> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
-		/// <summary>
-		/// Initializes a new instance of the BitStorage class with the specified data.
-		/// </summary>
-		/// <param name="bits">The initial data to store.</param>
-		/// <param name="bitsToWrite">The total number of bits to write from the enumerable. 
-		/// This must be a non-negative value.  If this is null or greater than the number of bits 
-		/// total in the enum, all the bits will be written.</param>
-		/// <param name="elementBitsToWrite">The number of bits for each element to write.
-		/// This must be a non-negative value. If this is null or greater than the number of bits in
-		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
-		public BitStorage(IEnumerable<ulong> bits, int? bitsToWrite = null, int? elementBitsToWrite = null)
-		{
-			this.Write(bits, bitsToWrite, elementBitsToWrite);
-		}
 
+		/// <summary>
+		/// Creates a new instance of <see cref="BitStorage"/> and writes the specified bits to it.
+		/// </summary>
+		/// <typeparam name="T">The type of the elements in the <paramref name="bits"/> collection. Must be a value type.</typeparam>
+		/// <param name="bits">A collection of bits to be written to the <see cref="BitStorage"/> instance.</param>
+		/// <param name="bitsToWrite">The total number of bits to write. If null, all bits in the <paramref name="bits"/> collection are written.</param>
+		/// <param name="elementBitsToWrite">The number of bits to write per element in the <paramref name="bits"/> collection. If null, all bits of each
+		/// element are written.</param>
+		/// <returns>A new <see cref="BitStorage"/> instance containing the written bits.</returns>
+		public static BitStorage BitStorageFactory<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null) where T : struct
+		{
+			BitStorage newStorage = new();
+			newStorage.Write(bits, bitsToWrite, elementBitsToWrite);
+			return newStorage;
+		}
 		/// <summary>
 		/// Gets or sets the bits at the specified range in the storage using a boolean array.  This does not use the
 		/// <see cref="this[int]"/> for speed reasons.
@@ -210,17 +93,7 @@ namespace GgoSoft.Storage
 		{
 			get
 			{
-				if (range.Start.Value < 0 || range.End.Value > Count)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot get index {range} from storage of length {Count}");
-				}
-				// Get the start and the end of the range, taking into account the IsFromEnd property
-				int start = range.Start.IsFromEnd ? Count - range.Start.Value : range.Start.Value;
-				int end = range.End.IsFromEnd ? Count - range.End.Value : range.End.Value;
-				if (start > end)
-				{
-					throw new ArgumentOutOfRangeException($"Specified argument {range} was out of the range of valid values.");
-				}
+				var (start, end) = GetActualIndex(range);
 				// Calculate the length of the range and create the return array
 				int length = end - start;
 				bool[] returnValue = new bool[length];
@@ -243,22 +116,12 @@ namespace GgoSoft.Storage
 			}
 			set
 			{
-				if (range.Start.Value < 0 || range.End.Value > Count)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot get index {range} from storage of length {Count}");
-				}
-				// Get the start and the end of the range, taking into account the IsFromEnd property
-				int start = range.Start.IsFromEnd ? Count - range.Start.Value : range.Start.Value;
-				int end = range.End.IsFromEnd ? Count - range.End.Value : range.End.Value;
-				if (start > end)
-				{
-					throw new ArgumentOutOfRangeException($"Specified argument {range} was out of the range of valid values.");
-				}
+				var (start, end) = GetActualIndex(range);
 				// Calculate the length of the range and check if the length of the array matches
 				int length = end - start;
 				if (length != value.Length)
 				{
-					throw new ArgumentOutOfRangeException($"Range is specified as {range} ({length} bits), but length of array given is {value.Length}");
+					throw new ArgumentOutOfRangeException(nameof(range), $"Range is specified as {range} ({length} bits), but length of array given is {value.Length}");
 				}
 				// get the data element location and bit mask for the start of the range, then loop over each item in the range
 				var (element, bitMask) = GetLocation(start);
@@ -288,12 +151,7 @@ namespace GgoSoft.Storage
 		{
 			get
 			{
-				// get the index of the bit requested, taking into account the IsFromEnd property
-				int convertedIndex = index.IsFromEnd ? Count - index.Value : index.Value;
-				if (convertedIndex < 0 || convertedIndex >= Count)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot get index {index} from storage of length {Count}");
-				}
+				int convertedIndex = GetActualIndex(index);
 				// get the data element location and bit mask for the index
 				var (element, bitMask) = GetLocation(convertedIndex);
 				// check if the bit is set in the data element and return the result
@@ -301,12 +159,7 @@ namespace GgoSoft.Storage
 			}
 			set
 			{
-				// get the index of the bit requested, taking into account the IsFromEnd property
-				int convertedIndex = index.IsFromEnd ? Count - index.Value : index.Value;
-				if (convertedIndex < 0 || convertedIndex >= Count)
-				{
-					throw new ArgumentOutOfRangeException($"Cannot set index {index} from storage of length {Count}");
-				}
+				int convertedIndex = GetActualIndex(index);
 				// get the data element location and bit mask for the index
 				var (element, bitMask) = GetLocation(convertedIndex);
 				// check if the bit is set in the supplied value and set the value accordingly
@@ -314,6 +167,22 @@ namespace GgoSoft.Storage
 			}
 		}
 
+		private int GetActualIndex(Index index)
+		{
+			(int start, _) = GetActualIndex(Range.StartAt(index));
+			return start;
+		}
+		private (int start, int end) GetActualIndex(Range range)
+		{
+			// Get the start and the end of the range, taking into account the IsFromEnd property
+			int start = range.Start.IsFromEnd ? Count - range.Start.Value : range.Start.Value;
+			int end = range.End.IsFromEnd ? Count - range.End.Value : range.End.Value;
+			if (start < 0 || end > Count || start > end)
+			{
+				throw new ArgumentOutOfRangeException(nameof(range), $"Cannot get index {range} from storage of length {Count}");
+			}
+			return(start, end);
+		}
 		/// <summary>
 		/// Checks and updates the length of bits written to the storage.
 		/// </summary>
@@ -335,17 +204,28 @@ namespace GgoSoft.Storage
 		// Helper method to get a mask length bits long, up to 64.  E.g. length = 6, this returns 0b111111
 		private static ulong GetMask(int length)
 		{
-			return length switch
+			ulong returnResult = 0;
+			if (length < 0 || length > 64)
 			{
-				0 => 0, // ulong.MaxValue >> 64 = ulong.MaxValue, it seems like the RHS is % 64, so this has to be an edge case
-				> 0 and < 64 => ulong.MaxValue >> TypeLengths[typeof(ulong)] - length, // could have hard coded to 64 for ulong but this is more flexible
-				64 => ulong.MaxValue, // the calculation above will work, but if there are conditions, may as well be explicit
-				_ => throw new ArgumentOutOfRangeException($"Invalid length: {length}, values must be between 0 and 64")
-			};
+				throw new ArgumentOutOfRangeException(nameof(length), "Value must be between 0 and 64.");
+			}
+			if (length == 64)
+			{
+				returnResult = ulong.MaxValue;
+			}
+			else if (length != 0)
+			{
+				returnResult = (1UL << length) - 1;
+			}
+			return returnResult;
 		}
 		// Helper method to write a bool bit at a specific index
 		private void WriteBit(bool bit, int mask, int byteIndex)
 		{
+			if(byteIndex < 0 || byteIndex >= data.Count)
+			{
+				throw new ArgumentOutOfRangeException(nameof(byteIndex), $"Byte index {byteIndex} is out of range of the data storage");
+			}
 			if (bit)
 			{
 				data[byteIndex] |= (byte)mask;
@@ -353,6 +233,24 @@ namespace GgoSoft.Storage
 			else
 			{
 				data[byteIndex] &= (byte)~mask;
+			}
+		}
+		private void EnsureCapacity(int byteIndex)
+		{
+			if (byteIndex < 0) throw new ArgumentOutOfRangeException(nameof(byteIndex));
+			if (byteIndex < data.Count) return;
+			// EnsureCapacity exists on List<T> (.NET Core/.NET 5+)
+			int needed = byteIndex + 1;
+			if (data.Capacity < needed)
+			{
+				int newCap = Math.Max(data.Capacity == 0 ? 4 : data.Capacity * 2, needed);
+				data.Capacity = newCap;
+			}
+			// add the missing bytes in one allocation
+			int toAdd = needed - data.Count;
+			if (toAdd > 0)
+			{
+				data.AddRange(Enumerable.Repeat((byte)0, toAdd));
 			}
 		}
 		/// <summary>
@@ -368,14 +266,16 @@ namespace GgoSoft.Storage
 			}
 			set
 			{
-				_readBitIndex = value;
-				if (_readBitIndex < 0)
+				if (value < 0)
 				{
 					_readBitIndex = StorageElementLength - 1;
 					_readByteIndex++;
-				} else if (_readBitIndex >= StorageElementLength)
+				} else if (value >= StorageElementLength)
 				{
-					throw new ArgumentOutOfRangeException($"ReadBitIndex {_readBitIndex} is cannot be greater than {StorageElementLength}");
+					throw new ArgumentOutOfRangeException(nameof(value), $"ReadBitIndex {value} is cannot be greater than {StorageElementLength}");
+				} else
+				{
+					_readBitIndex = value;
 				}
 			}
 		}
@@ -390,16 +290,19 @@ namespace GgoSoft.Storage
 			}
 			set
 			{
-				_writeBitIndex = value;
 				// If the write bit index is less than 0, we need to reset the WriteBitIndex and move to the next byte
-				if (_writeBitIndex < 0)
+				if (value < 0)
 				{
 					_writeBitIndex = StorageElementLength - 1;
 					WriteByteIndex++;
 				}
-				else if (_writeBitIndex >= StorageElementLength)
+				else if (value >= StorageElementLength)
 				{
-					throw new ArgumentOutOfRangeException($"WriteBitIndex {_writeBitIndex} is cannot be greater than {StorageElementLength}");
+					throw new ArgumentOutOfRangeException(nameof(value), $"WriteBitIndex {value} is cannot be greater than {StorageElementLength}");
+				}
+				else
+				{
+					_writeBitIndex = value;
 				}
 				CheckMaxBits(); // Ensure the length is updated if necessary
 			}
@@ -485,7 +388,7 @@ namespace GgoSoft.Storage
 		{
 			if (bitsToRead < 0)
 			{
-				throw new ArgumentOutOfRangeException($"Number of bits ({bitsToRead}) is out of range of 0-{Count}");
+				throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of 0-{Count}");
 			}
 			bitsToRead ??= Count - ReadIndex;
 			Type tType = typeof(T);
@@ -493,9 +396,9 @@ namespace GgoSoft.Storage
 			LastReadBitCount = 0;
 			if (!TypeLengths.TryGetValue(tType, out int typeLength))
 			{
-				throw new ArgumentOutOfRangeException($"Type {tType} is not supported");
+				throw new ArgumentException($"Type {tType} is not supported");
 			}
-			return ReadEnumerable<T>(bitsToRead ?? Count - ReadBitIndex, typeLength, bitsRead);
+			return ReadEnumerable<T>(bitsToRead.Value, typeLength, bitsRead);
 		}
 		/// <summary>
 		/// Wrapper method for <see cref="Read{T}(out T, int, bool)"/> to read a single value of type T and return that directly instead
@@ -535,7 +438,7 @@ namespace GgoSoft.Storage
 				bitsToRead ??= 1;
 				if (bitsToRead > 1 || bitsToRead < 0)
 				{
-					throw new ArgumentOutOfRangeException($"Number of bits ({bitsToRead}) is out of range of 1");
+					throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of 1");
 				}
 				if(bitsToRead == 0)
 				{
@@ -551,12 +454,12 @@ namespace GgoSoft.Storage
 			// if the number of bits is more than can be put into a ulong, throw an error
 			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
 			{
-				throw new ArgumentOutOfRangeException($"Type {typeof(T)} is not supported");
+				throw new ArgumentException($"Type {typeof(T)} is not supported");
 			}
 			ulong tempReturnValue = 0;
 			if (bitsToRead < 0 || bitsToRead > typeLength)
 			{
-				throw new ArgumentOutOfRangeException($"Number of bits ({bitsToRead}) is out of range of {typeLength}");
+				throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of {typeLength}");
 			}
 			// take the index of the byte we are writing to minus the index where we are reading minus 1 gives the total number of whole
 			// bytes left * 8 = bits in those bytes, add to that the read bit index on the front side (zero-based index, so add 1) and the
@@ -625,10 +528,7 @@ namespace GgoSoft.Storage
 		/// <param name="bit">Bit to be written</param>
 		private void Write(bool bit)
 		{
-			while (WriteByteIndex >= data.Count)
-			{
-				data.Add(0);
-			}
+			EnsureCapacity(WriteByteIndex);
 			var mask = 1 << WriteBitIndex;
 
 			WriteBit(bit, mask, WriteByteIndex);
@@ -649,16 +549,16 @@ namespace GgoSoft.Storage
 		/// This must be a non-negative value. If this is null or greater than the number of bits in
 		/// each element, all bits in the element will be written, unless <paramref name="bitsToWrite"/> has been reached</param>
 		/// <exception cref="ArgumentException">Thrown if the type is not valid</exception>
-		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>"
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>
 		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null) where T : struct
 		{
 			if(bitsToWrite < 0)
 			{
-				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), bitsToWrite, "Cannot be less than 0");
+				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) cannot be less than 0");
 			}
 			if (elementBitsToWrite < 0)
 			{
-				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), elementBitsToWrite, "Cannot be less than 0");
+				throw new ArgumentOutOfRangeException(nameof(elementBitsToWrite), $"Number of bits ({elementBitsToWrite}) cannot be less than 0");
 			}           
 			// special edge case for boolean values.  This will take the boolean values, create a ulong with the appropriate bits
 			// set and call the generic <see cref="Write{T}(IEnumerable{T}, int?)"/> method to write the bits.
@@ -672,10 +572,11 @@ namespace GgoSoft.Storage
 				{
 					// Shift the value to the left and add the bit
 					value <<= 1;
-					value += (ulong)((bool)(object)bit? 1 : 0);
+					value += (bool)(object)bit? 1UL : 0UL;
 					i++;
-					// If the number of bits is equal to the number of bits in the storage element, write the value and reset it
-					// wroteLast is used to determine if the last value was written, so that the last value can be written if it is not a multiple of the number of bits
+					// If the number of bits is equal to the number of bits in the storage element, write the value
+					// and reset it. "wroteLast" is used to determine if the last value was written, so that the
+					// last value can be written if it is not a multiple of the number of bits
 					if (i % bitLength == 0)
 					{
 						Write(value, bitLength);
@@ -686,8 +587,9 @@ namespace GgoSoft.Storage
 					{
 						wroteLast = false;
 					}
-					// If the length is specified and the end of the data is reached, break out of the loop.  This is used instead
-					// of data.Count() because the length of the data is not known until the end of the enumeration
+					// If the length is specified and the end of the data is reached, break out of the loop.  This
+					// is used instead of data.Count() because the length of the data is not known until the end of
+					// the enumeration
 					if (i == bitsToWrite)
 					{
 						break;
@@ -705,31 +607,42 @@ namespace GgoSoft.Storage
 				{
 					throw new ArgumentException($"Type {typeof(T)} is not supported");
 				}
-				// If the elementBitsToWrite is specified, use that, otherwise use the type length
-				if (elementBitsToWrite < typeLength)
+				// If the elementBitsToWrite (the number of bits to write for each element) is specified, use that,
+				// otherwise use the type length (all bits in each element).
+				if (elementBitsToWrite != null && elementBitsToWrite < typeLength)
 				{
 					typeLength = (int)elementBitsToWrite;
 				}
-				// The length of bits to be written, if null, use a negative value to indicate all bits
-				int dataLength = bitsToWrite ?? -typeLength;
-				int numElements = dataLength / typeLength;
-				int extraBits = dataLength % typeLength;
+				// Since "bits" is an enumerable, the length is not known until the end.  The "bitsToWrite" is
+				// going to be either null (write all bits) or a non-negative value.  If the value is null, the
+				// length of bits to write (dataLength) will be set to a negative value to indicate all bits,
+				// otherwise, it will be set to the value of bitsToWrite.  This will be used to determine when
+				// to stop writing. 
+				int dataLength = bitsToWrite ?? -typeLength; // Number of bits to write, negative means all bits
+				int numElements = dataLength / typeLength; // Number of whole elements to write
+				int extraBits = dataLength % typeLength; // Remainder of bits to write
+				// If the dataLength is a multiple of the type length, the end is the number of elements, otherwise,
+				// the end is the number of elements + 1 (for the extra bits)
 				int end = extraBits == 0 ? numElements : numElements + 1;
+				// Since there is no index in an enumerable, we need to keep track of the number of elements written
 				int i = 0;
 				foreach (var value in bits)
 				{
+					var iterValue = (ulong)Convert.ChangeType(value, typeof(ulong));
 					// bitLength will be the size of the number until the last number, which will be the extra bits
 					int bitLength = typeLength;
+					// If the "bitsToWrite" is null, all bits will be written, so the "end" will be negative and this
+					// will never be true.  If the "bitsToWrite" is not null, this will be true on the last element to write
 					if (i == numElements)
 					{
+						iterValue >>= bitLength - extraBits; // Shift the value to the right to remove unwanted bits
 						bitLength = extraBits;
-
 					}
-					Write(value, bitLength);
+					Write(iterValue, bitLength);
 					i++;
-					// If the length is specified and the end of the data is reached, break out of the loop
-					// Doing this instead of a "for" loop because if the length is not given, the enumeration
-					// length will not be known until the end
+					// If the length is specified and the end of the data is reached, break out of the loop.
+					// Note that if bitsToWrite is null, end will be negative and i >= 0 will always be true
+					// so the check for bitsToWrite != null is needed
 					if (bitsToWrite != null && i >= end)
 					{
 						break;
@@ -751,7 +664,7 @@ namespace GgoSoft.Storage
 			{
 				if (bitsToWrite > 1 || bitsToWrite < 0)
 				{
-					throw new ArgumentOutOfRangeException($"Number of bits ({bitsToWrite}) is out of range of 1");
+					throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) is out of range of 1");
 				}
 				if (bitsToWrite != 0)
 				{
@@ -761,15 +674,15 @@ namespace GgoSoft.Storage
 			}
 			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
 			{
-				throw new ArgumentOutOfRangeException($"Type {typeof(T)} is not supported");
+				throw new ArgumentException($"Type {typeof(T)} is not supported");
 			}
 			if (bitsToWrite < 0 || bitsToWrite > typeLength)
 			{
-				throw new ArgumentOutOfRangeException($"Number of bits ({bitsToWrite}) is out of range of {typeLength}");
+				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) is out of range of 0-{typeLength}");
 			}
-			if(System.Collections.Generic.Comparer<T>.Default.Compare(bits, (T)Convert.ChangeType(0, typeof(T))) < 0)
+			if(Comparer<T>.Default.Compare(bits, (T)Convert.ChangeType(0, typeof(T))) < 0)
 			{
-				throw new ArgumentOutOfRangeException($"Number of bits ({bits}) needs to be non-negative");
+				throw new ArgumentOutOfRangeException(nameof(bits), $"Value ({bits}) needs to be non-negative");
 			}
 			// tempLength is the number of bits left to write
 			int tempLength = bitsToWrite ?? typeLength;
@@ -802,13 +715,9 @@ namespace GgoSoft.Storage
 				writeBits <<= WriteBitIndex + 1 - tempWriteLength;
 				// make a mask for the bits to be written
 				ulong tempMask = (mask >> tempLength) << WriteBitIndex + 1 - tempWriteLength;
-				// if the WriteByteIndex is greater than the size of the data list, add new bytes to the data list until it isn't
-				while (WriteByteIndex >= data.Count)
-				{
-					data.Add(0);
-				}
+				EnsureCapacity(WriteByteIndex);
 				// Set the storage element bits to 0's in the position of the bits to be written
-				data[WriteByteIndex] ^= (byte)(data[_writeByteIndex] & tempMask);
+				data[WriteByteIndex] &= (byte)~tempMask;
 				// Add the bits to be written to the storage element
 				data[WriteByteIndex] += (byte)writeBits;
 				// Update the WriteBitIndex
@@ -838,7 +747,7 @@ namespace GgoSoft.Storage
 			{
 				if (value < 0 || value > Count)
 				{
-					throw new ArgumentOutOfRangeException($"Invalid ReadIndex: {value}, values must be from 0 to {Count}");
+					throw new ArgumentOutOfRangeException(nameof(value), $"Invalid ReadIndex: {value}, values must be between 0 and {Count}");
 				}
 				_readByteIndex = value / StorageElementLength;
 				ReadBitIndex = StorageElementLength - value % StorageElementLength - 1;
@@ -859,12 +768,166 @@ namespace GgoSoft.Storage
 			{
 				if (value < 0 || value > Count)
 				{
-					throw new ArgumentOutOfRangeException($"Invalid WriteIndex: {value}, values must be between 0 and {Count}");
+					throw new ArgumentOutOfRangeException(nameof(value), $"Invalid WriteIndex: {value}, values must be between 0 and {Count}");
 				}
 				_writeByteIndex = value / StorageElementLength;
 				WriteBitIndex = StorageElementLength - value % StorageElementLength - 1;
 			}
 		}
+		/// <summary>
+		/// Inserts the specified <see cref="BitStorage"/> at the given index within the current <see cref="BitStorage"/>  and
+		/// returns a new <see cref="BitStorage"/> containing the result.
+		/// </summary>
+		/// <remarks>The method does not modify the current <see cref="BitStorage"/> instance. Instead, it creates and
+		/// returns  a new <see cref="BitStorage"/> with the specified bits inserted. The order of bits in the resulting  <see
+		/// cref="BitStorage"/> is preserved, with the bits from the specified <paramref name="bits"/> inserted  at the
+		/// specified index.</remarks>
+		/// <param name="index">The zero-based index at which the specified <see cref="BitStorage"/> will be inserted.  Must be between 0 and <see
+		/// cref="Count"/>, inclusive.</param>
+		/// <param name="bits">The <see cref="BitStorage"/> to insert. Cannot be <see langword="null"/>.</param>
+		/// <returns>A new <see cref="BitStorage"/> containing the bits from the current instance, with the specified  <see
+		/// cref="BitStorage"/> inserted at the specified index.</returns>
+		/// <exception cref="ArgumentNullException">Thrown if <paramref name="bits"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="index"/> is less than 0 or greater than <see cref="Count"/>.</exception>
+		public BitStorage Insert(int index, BitStorage bits)
+		{
+			if (bits is null) throw new ArgumentNullException(nameof(bits));
+			if (index < 0 || index > Count) throw new ArgumentOutOfRangeException(nameof(index), index, $"Index must be between 0 and {Count}");
 
+			var tempReadIndex = ReadIndex;
+
+			// Create result
+			var result = new BitStorage();
+
+			// starting from the beginning, read up to the index
+			ReadIndex = 0;
+			var prefix = ReadEnumerable<int>(index);
+
+			// write the prefix bits to the result
+			foreach (var b in prefix)
+			{
+				result.Write(b, LastReadBitCount);
+			}
+
+			// write the bits to be inserted
+			result.Write(bits);
+
+			// read the rest of the bits from the original storage
+			var suffix = ReadEnumerable<int>();
+
+			// write the suffix bits to the result
+			foreach (var b in suffix)
+			{
+				result.Write(b, LastReadBitCount);
+			}
+			// restore the read index
+			ReadIndex = tempReadIndex;
+			return result;
+		}
+		/// <summary>
+		/// Inserts the specified bits into the storage at the given index.
+		/// </summary>
+		/// <typeparam name="T">The value type containing the bits to insert.</typeparam>
+		/// <param name="index">The zero-based index at which to insert the bits.</param>
+		/// <param name="bits">The value containing the bits to be inserted.</param>
+		/// <param name="bitsToWrite">The number of bits to write from the value. If null, all bits of the value are written.</param>
+		/// <returns>A new BitStorage instance with the specified bits inserted at the given index.</returns>
+		public BitStorage Insert<T>(int index, T bits, int? bitsToWrite = null) where T : struct 
+		{
+			var storage = new BitStorage();
+			storage.Write(bits, bitsToWrite);
+			return Insert(index, storage);
+		}
+		/// <summary>
+		/// Removes a range of bits from the current storage and returns a new BitStorage instance with the specified range
+		/// excluded.
+		/// </summary>
+		/// <remarks>The original BitStorage instance remains unchanged. The returned BitStorage contains a copy of
+		/// the bits with the specified range removed.</remarks>
+		/// <param name="index">The zero-based starting position of the range to remove. Must be between 0 and Count, inclusive.</param>
+		/// <param name="count">The number of bits to remove. Must be greater than or equal to 0, and the range defined by index and count must
+		/// not exceed the total number of bits.</param>
+		/// <returns>A new BitStorage instance containing all bits from the original storage except for those in the specified range.</returns>
+		/// <exception cref="ArgumentOutOfRangeException">Thrown when index or count is less than 0, index is greater than Count, or the range defined by index and count
+		/// exceeds the total number of bits in the storage.</exception>
+		public BitStorage RemoveRange(int index, int count)
+		{
+			if (count < 0) throw new ArgumentOutOfRangeException(nameof(count), count, "Cannot be less than 0");
+			if (index < 0 || index > Count) throw new ArgumentOutOfRangeException(nameof(index), index, $"Index must be between 0 and {Count}");
+			if (index + count > Count) throw new ArgumentOutOfRangeException(nameof(count), $"Range (index + count) exceeds storage length {Count}");
+
+			var tempReadIndex = ReadIndex;
+
+			// Create result
+			var result = new BitStorage();
+
+			// starting from the beginning, read up to the index
+			ReadIndex = 0;
+			var prefix = ReadEnumerable<int>(index);
+
+			// write the prefix bits to the result
+			foreach (var b in prefix)
+			{
+				result.Write(b, LastReadBitCount);
+			}
+
+			// skip the range to be removed
+			ReadIndex += count;
+
+			// read the rest of the bits from the original storage
+			var suffixLength = Count - (index + count);
+			var suffix = ReadEnumerable<int>(suffixLength);
+
+			// write the suffix bits to the result
+			foreach (var b in suffix)
+			{
+				result.Write(b, LastReadBitCount);
+			}
+
+			// restore the read index
+			ReadIndex = tempReadIndex;
+			return result;
+		}
+		/// <summary>
+		/// Removes a specified number of bits from the end of the bit storage and returns the resulting BitStorage instance.
+		/// </summary>
+		/// <param name="count">The number of bits to remove from the end. Must be greater than or equal to 0 and less than or equal to the
+		/// current bit count.</param>
+		/// <returns>A new BitStorage instance with the specified number of bits removed from the end.</returns>
+		public BitStorage TrimEnd(int count)
+		{
+			// Remove "count" bits from the end of the storage
+			return RemoveRange(Count - count, count);
+		}
+		[ExcludeFromCodeCoverage]
+		public string PrintBits(int start=0, int? end = null)
+		{
+			int byteStart = start / StorageElementLength;
+			int byteIndex = byteStart * StorageElementLength;
+			end ??= Count;
+			int byteEnd = (end.Value + StorageElementLength - 1) / StorageElementLength;
+			System.Text.StringBuilder sb = new();
+			for (int i = byteStart; i < byteEnd; i++)
+			{
+				var padded = Convert.ToString(data[i], 2).PadLeft(StorageElementLength, '0');
+				var extraBits = Count % StorageElementLength;
+				if (i == byteEnd - 1 && extraBits > 0)
+				{
+					extraBits = StorageElementLength - extraBits;
+					padded = $"{padded[..^extraBits]}{new string('.', extraBits)}";
+				}
+				sb.Append($"{padded}\t{data[i]}{Environment.NewLine}");
+			}
+			for (int i = byteIndex; i < end; i++)
+			{
+				sb.Append(this[i] ? '1' : '0');
+				if (i % StorageElementLength == StorageElementLength - 1)
+				{
+					sb.Append(' ');
+				}
+			}
+			Console.WriteLine(sb.ToString());
+			return sb.ToString();
+		}
 	}
 }
