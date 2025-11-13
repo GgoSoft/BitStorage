@@ -13,7 +13,7 @@ namespace TestBitStorage
 		public void WriteAndRead_BoolSequence_Roundtrips()
 		{
 			var storage = new BitStorage();
-			bool[] input = [true, false, true, true, false, false, true ];
+			bool[] input = [true, false, true, true, false, false, true];
 
 			// write booleans
 			storage.Write(input);
@@ -127,7 +127,7 @@ namespace TestBitStorage
 		{
 			var storage = new BitStorage();
 			var data = new bool[64];
-			for (int i = 0; i < 64; i+=3)
+			for (int i = 0; i < 64; i += 3)
 			{
 				data[i] = true;
 			}
@@ -155,7 +155,7 @@ namespace TestBitStorage
 		{
 			var storage = new BitStorage();
 			byte[] data = [0b1010_1010, 0b1100_0011, 0b1111_1111];
-			storage.Write(data, elementBitsToWrite:1);
+			storage.Write(data, elementBitsToWrite: 1);
 			Assert.Equal(data.Length, storage.Count);
 			Assert.Equal(0b011, storage.Read<int>());
 		}
@@ -377,7 +377,7 @@ namespace TestBitStorage
 
 			// set bits 0..7 using Write(byte) for convenience (one byte)
 			storage.Write((byte)0); // ensures storage has capacity
-			
+
 			// set some bits via indexer
 			storage[0] = true;
 			storage[7] = true;
@@ -401,7 +401,7 @@ namespace TestBitStorage
 
 			// set bits 0..7 using Write(byte) for convenience (one byte)
 			storage.Write((byte)0); // ensures storage has capacity
-			
+
 			// set some bits via indexer
 			storage[2..5] = [true, true, true];
 
@@ -415,8 +415,8 @@ namespace TestBitStorage
 			var storage = new BitStorage();
 
 			// set bits 0..7 using Write(byte) for convenience (one byte)
-			storage.Write<byte>([0,0]); // ensures storage has capacity
-			
+			storage.Write<byte>([0, 0]); // ensures storage has capacity
+
 			// set some bits via indexer
 			storage[7..10] = [true, true, true];
 
@@ -439,8 +439,8 @@ namespace TestBitStorage
 			var caughtException = Assert.Throws<ArgumentOutOfRangeException>(() => storage[startRange..endRange] = data);
 
 			Assert.NotNull(caughtException.ParamName);
-			Assert.Equal("range",caughtException.ParamName);
-			Assert.Equal($"Range is specified as {startRange}..{endRange} ({endRange-startRange} bits), but length of array given is {data.Length} (Parameter 'range')", caughtException.Message);
+			Assert.Equal("range", caughtException.ParamName);
+			Assert.Equal($"Range is specified as {startRange}..{endRange} ({endRange - startRange} bits), but length of array given is {data.Length} (Parameter 'range')", caughtException.Message);
 		}
 
 		[Fact]
@@ -514,21 +514,21 @@ namespace TestBitStorage
 					insertData[i] = true;
 				}
 			}
-			for(int i = 0; i < data.Length; i++)
+			for (int i = 0; i < data.Length; i++)
 			{
-				for(int j = 0; j < insertData.Length; j+=4)
+				for (int j = 0; j < insertData.Length; j += 4)
 				{
 					var baseStorage = new BitStorage();
 					baseStorage.Write(data[0..i]);
 					var ins = new BitStorage();
 					ins.Write(insertData[0..j]);
-					for(int k = 0; k <= i; k++)
+					for (int k = 0; k <= i; k++)
 					{
 						count++;
 						var result = baseStorage.Insert(k, ins);
 						Assert.Equal(baseStorage.Count + ins.Count, result.Count);
 						result.ReadIndex = 0;
-						var expected = data.Take(k).Concat(insertData.Take(j)).Concat(data.Skip(k).Take(i-k)).ToArray();
+						var expected = data.Take(k).Concat(insertData.Take(j)).Concat(data.Skip(k).Take(i - k)).ToArray();
 						var r = result[..];
 						Assert.Equal(expected, r);
 					}
@@ -862,6 +862,79 @@ namespace TestBitStorage
 			Assert.Throws<ArgumentOutOfRangeException>(() => s.RemoveRange(1, -1)); // invalid count
 			Assert.Throws<ArgumentOutOfRangeException>(() => s.RemoveRange(4, 1)); // index > Count
 			Assert.Throws<ArgumentOutOfRangeException>(() => s.RemoveRange(1, 5)); // index+count > Count
+		}
+
+		[Fact]
+		public void Equals_Null_ReturnsFalse()
+		{
+			var s = new BitStorage();
+			s.Write([true, false, true]);
+			Assert.False(s.ContentEquals(null));
+		}
+		[Fact]
+		public void Equals_DifferentType_ReturnsFalse()
+		{
+			var s = new BitStorage();
+			s.Write([true, false, true]);
+			Assert.False(s.Equals("not a BitStorage"));
+		}
+		[Fact]
+		public void Equals_DifferentSizes_ReturnsFalse()
+		{
+			var s1 = new BitStorage();
+			s1.Write(0, 5);
+			var s2 = new BitStorage();
+			s2.Write(0, 6);
+			Assert.False(s1.ContentEquals(s2));
+		}
+		[Fact]
+		public void Equals_EmptyStorages_ReturnsTrue()
+		{
+			var s1 = new BitStorage();
+			var s2 = new BitStorage();
+			Assert.True(s1.ContentEquals(s2));
+		}
+		[Fact]
+		public void Equals_SameContent_ReturnsTrue()
+		{
+			var s1 = new BitStorage();
+			var data = new byte[] { 0b1011_0010, 0b1101_1110, 0b0110_1011 };
+			s1.Write(data);
+			var s2 = new BitStorage();
+			s2.Write(data);
+			Assert.True(s1.ContentEquals(s2));
+		}
+		[Fact]
+		public void Equals_DifferentLastBitOn_WithBoundary_ReturnsFalse()
+		{
+			var data = new byte[] { 0b1011_0010, 0b1101_1110, 0b0110_1011 };
+			var s1 = BitStorage.BitStorageFactory(data);
+			var s2 = BitStorage.BitStorageFactory(data);
+			s2[^1] = !s2[^1]; // flip last bit
+			Assert.False(s1.ContentEquals(s2));
+		}
+		[Fact]
+		public void Equals_DifferentLastBitOn_AcrossBoundary_ReturnsFalse()
+		{
+			var data = new byte[] { 0b1011_0010, 0b1101_1110, 0b0110_1011 };
+			var s1 = BitStorage.BitStorageFactory(data);
+			var s2 = BitStorage.BitStorageFactory(data);
+			s1.Write(true);
+			s2.Write(false);
+			Assert.False(s1.ContentEquals(s2));
+		}
+		[Fact]
+		public void Equals_SameDataDifferentOutsideData_ReturnsTrue()
+		{
+			var data = new byte[] { 0b1011_0010, 0b1101_1110, 0b0110_1011 };
+			var s1 = BitStorage.BitStorageFactory(data);
+			s1.Write(false);
+			s1.Write([true, true]);
+			// Trim changes the cound, but leaves the data, so the underlying storage still has the [true, true] at the end, but the bitstorage count does not include them
+			s1 = s1.TrimEnd(2);
+			var s2 = BitStorage.BitStorageFactory(data);
+			s2.Write(false);
+			Assert.True(s1.ContentEquals(s2));
 		}
 	}
 }

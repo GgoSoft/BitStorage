@@ -2,7 +2,12 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Contracts;
 using System.Linq;
+using System.Runtime.InteropServices;
+
+// TODO: all writes should return BitStorage (this) for chaining, insert and remove would get confusing because they return new objects instead of the current
+//       so they should be named CloneWithInsert and CloneWithRemove or something similar, or make them modify the current object instead of returning a new one
 
 namespace GgoSoft.Storage
 {
@@ -56,8 +61,8 @@ namespace GgoSoft.Storage
 		/// </summary>
 		public BitStorage()
 		{
-
 		}
+
 		/// <summary>
 		/// Makes a copy of the specified BitStorage instance.
 		/// </summary>
@@ -76,12 +81,14 @@ namespace GgoSoft.Storage
 		/// <param name="elementBitsToWrite">The number of bits to write per element in the <paramref name="bits"/> collection. If null, all bits of each
 		/// element are written.</param>
 		/// <returns>A new <see cref="BitStorage"/> instance containing the written bits.</returns>
+		[Pure]
 		public static BitStorage BitStorageFactory<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null) where T : struct
 		{
 			BitStorage newStorage = new();
 			newStorage.Write(bits, bitsToWrite, elementBitsToWrite);
 			return newStorage;
 		}
+
 		/// <summary>
 		/// Gets or sets the bits at the specified range in the storage using a boolean array.  This does not use the
 		/// <see cref="this[int]"/> for speed reasons.
@@ -167,11 +174,14 @@ namespace GgoSoft.Storage
 			}
 		}
 
+		// Helper method to convert an Index to an actual index, taking into account the IsFromEnd property
 		private int GetActualIndex(Index index)
 		{
 			(int start, _) = GetActualIndex(Range.StartAt(index));
 			return start;
 		}
+
+		// Helper method to convert a Range to actual start and end indices, taking into account the IsFromEnd property
 		private (int start, int end) GetActualIndex(Range range)
 		{
 			// Get the start and the end of the range, taking into account the IsFromEnd property
@@ -181,11 +191,10 @@ namespace GgoSoft.Storage
 			{
 				throw new ArgumentOutOfRangeException(nameof(range), $"Cannot get index {range} from storage of length {Count}");
 			}
-			return(start, end);
+			return (start, end);
 		}
-		/// <summary>
-		/// Checks and updates the length of bits written to the storage.
-		/// </summary>
+
+		// Checks and updates the length of bits written to the storage.
 		private void CheckMaxBits()
 		{
 			var writeIndex = WriteIndex; // WriteIndex is calculated, this makes it so it's only called once
@@ -194,13 +203,15 @@ namespace GgoSoft.Storage
 				Count = writeIndex; // Update the length if the current write index exceeds it
 			}
 		}
-		//helper method to get the storage element and bit mask of the index
+
+		// Helper method to get the storage element and bit mask of the index
 		private static (int element, int bitMask) GetLocation(int index)
 		{
 			int element = index / StorageElementLength;
 			int bitMask = 1 << (StorageElementLength - (index % StorageElementLength) - 1);
 			return (element, bitMask);
 		}
+
 		// Helper method to get a mask length bits long, up to 64.  E.g. length = 6, this returns 0b111111
 		private static ulong GetMask(int length)
 		{
@@ -219,10 +230,11 @@ namespace GgoSoft.Storage
 			}
 			return returnResult;
 		}
+
 		// Helper method to write a bool bit at a specific index
 		private void WriteBit(bool bit, int mask, int byteIndex)
 		{
-			if(byteIndex < 0 || byteIndex >= data.Count)
+			if (byteIndex < 0 || byteIndex >= data.Count)
 			{
 				throw new ArgumentOutOfRangeException(nameof(byteIndex), $"Byte index {byteIndex} is out of range of the data storage");
 			}
@@ -235,6 +247,8 @@ namespace GgoSoft.Storage
 				data[byteIndex] &= (byte)~mask;
 			}
 		}
+
+		// Helper method to ensure the capacity of the data list is at least byteIndex + 1
 		private void EnsureCapacity(int byteIndex)
 		{
 			if (byteIndex < 0) throw new ArgumentOutOfRangeException(nameof(byteIndex));
@@ -253,11 +267,11 @@ namespace GgoSoft.Storage
 				data.AddRange(Enumerable.Repeat((byte)0, toAdd));
 			}
 		}
-		/// <summary>
-		/// Gets the number of bits in each element of the storage (e.g., byte = 8 bits).
-		/// </summary>
+
+		/// The number of bits in each element of the storage (e.g., byte = 8 bits).
 		private static int StorageElementLength { get; } = TypeLengths[typeof(byte)]; // Number of bits in a byte
 
+		// The index of the next bit to be read within the current element
 		private int ReadBitIndex
 		{
 			get
@@ -270,18 +284,19 @@ namespace GgoSoft.Storage
 				{
 					_readBitIndex = StorageElementLength - 1;
 					_readByteIndex++;
-				} else if (value >= StorageElementLength)
+				}
+				else if (value >= StorageElementLength)
 				{
 					throw new ArgumentOutOfRangeException(nameof(value), $"ReadBitIndex {value} is cannot be greater than {StorageElementLength}");
-				} else
+				}
+				else
 				{
 					_readBitIndex = value;
 				}
 			}
 		}
-		/// <summary>
-		/// Gets or sets the bit index for writing bits.
-		/// </summary>
+
+		// The index of the next bit to be written within the current element
 		private int WriteBitIndex
 		{
 			get
@@ -308,9 +323,7 @@ namespace GgoSoft.Storage
 			}
 		}
 
-		/// <summary>
-		/// Gets or sets the byte index for writing bits.
-		/// </summary>
+		// The index of the next byte to be written within the storage
 		private int WriteByteIndex
 		{
 			get
@@ -323,9 +336,11 @@ namespace GgoSoft.Storage
 				CheckMaxBits(); // Ensure the length is updated if necessary
 			}
 		}
+
+		// Helper method to read a single boolean value
 		private bool ReadBool()
 		{
-			if(ReadIndex >= Count)
+			if (ReadIndex >= Count)
 			{
 				LastReadBitCount = 0;
 				return false;
@@ -336,6 +351,7 @@ namespace GgoSoft.Storage
 			ReadBitIndex--;
 			return returnValue;
 		}
+
 		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
 		// thrown until the enumeration is read
 		private IEnumerable<T> ReadEnumerable<T>(int bitsToRead, int typeLength, BitsRead? bitsRead = null) where T : struct
@@ -376,6 +392,7 @@ namespace GgoSoft.Storage
 		{
 			return new List<byte>(data);
 		}
+
 		/// <summary>
 		/// Reads the specified number of bits from the storage and returns them as a Enumerable of numbers.
 		/// </summary>
@@ -384,7 +401,7 @@ namespace GgoSoft.Storage
 		/// <param name="bitsRead"> The number of bits read. This is used to get the number of bits read in the enumerable</param>
 		/// <returns>An Enumerable of values representing the read bits</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if the type is not valid</exception>
-		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead=null, BitsRead? bitsRead = null) where T : struct
+		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead = null, BitsRead? bitsRead = null) where T : struct
 		{
 			if (bitsToRead < 0)
 			{
@@ -400,6 +417,7 @@ namespace GgoSoft.Storage
 			}
 			return ReadEnumerable<T>(bitsToRead.Value, typeLength, bitsRead);
 		}
+
 		/// <summary>
 		/// Wrapper method for <see cref="Read{T}(out T, int, bool)"/> to read a single value of type T and return that directly instead
 		/// of an "out" parameter.  This assumes the count is the maximum number of bits of T.
@@ -421,6 +439,7 @@ namespace GgoSoft.Storage
 		{
 			return Read<T>(out _);
 		}
+
 		/// <summary>
 		/// Reads a specified number of bits from the storage and returns them as the out variable.  
 		/// E.g. if the <paramref name="bitsToRead"/> is 3, <typeparamref name="T"/> is a byte, 
@@ -440,7 +459,7 @@ namespace GgoSoft.Storage
 				{
 					throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of 1");
 				}
-				if(bitsToRead == 0)
+				if (bitsToRead == 0)
 				{
 					bitsRead = default;
 					LastReadBitCount = 0;
@@ -522,6 +541,7 @@ namespace GgoSoft.Storage
 				}
 			}
 		}
+
 		/// <summary>
 		/// Writes a single bit to the storage.
 		/// </summary>
@@ -552,14 +572,14 @@ namespace GgoSoft.Storage
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range.</exception>
 		public void Write<T>(IEnumerable<T> bits, int? bitsToWrite = null, int? elementBitsToWrite = null) where T : struct
 		{
-			if(bitsToWrite < 0)
+			if (bitsToWrite < 0)
 			{
 				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) cannot be less than 0");
 			}
 			if (elementBitsToWrite < 0)
 			{
 				throw new ArgumentOutOfRangeException(nameof(elementBitsToWrite), $"Number of bits ({elementBitsToWrite}) cannot be less than 0");
-			}           
+			}
 			// special edge case for boolean values.  This will take the boolean values, create a ulong with the appropriate bits
 			// set and call the generic <see cref="Write{T}(IEnumerable{T}, int?)"/> method to write the bits.
 			if (typeof(T) == typeof(bool))
@@ -572,7 +592,7 @@ namespace GgoSoft.Storage
 				{
 					// Shift the value to the left and add the bit
 					value <<= 1;
-					value += (bool)(object)bit? 1UL : 0UL;
+					value += (bool)(object)bit ? 1UL : 0UL;
 					i++;
 					// If the number of bits is equal to the number of bits in the storage element, write the value
 					// and reset it. "wroteLast" is used to determine if the last value was written, so that the
@@ -621,8 +641,8 @@ namespace GgoSoft.Storage
 				int dataLength = bitsToWrite ?? -typeLength; // Number of bits to write, negative means all bits
 				int numElements = dataLength / typeLength; // Number of whole elements to write
 				int extraBits = dataLength % typeLength; // Remainder of bits to write
-				// If the dataLength is a multiple of the type length, the end is the number of elements, otherwise,
-				// the end is the number of elements + 1 (for the extra bits)
+														 // If the dataLength is a multiple of the type length, the end is the number of elements, otherwise,
+														 // the end is the number of elements + 1 (for the extra bits)
 				int end = extraBits == 0 ? numElements : numElements + 1;
 				// Since there is no index in an enumerable, we need to keep track of the number of elements written
 				int i = 0;
@@ -650,6 +670,7 @@ namespace GgoSoft.Storage
 				}
 			}
 		}
+
 		/// <summary>
 		/// Writes the specified bits to the storage.
 		/// </summary>
@@ -680,7 +701,7 @@ namespace GgoSoft.Storage
 			{
 				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) is out of range of 0-{typeLength}");
 			}
-			if(Comparer<T>.Default.Compare(bits, (T)Convert.ChangeType(0, typeof(T))) < 0)
+			if (Comparer<T>.Default.Compare(bits, (T)Convert.ChangeType(0, typeof(T))) < 0)
 			{
 				throw new ArgumentOutOfRangeException(nameof(bits), $"Value ({bits}) needs to be non-negative");
 			}
@@ -725,8 +746,10 @@ namespace GgoSoft.Storage
 			}
 		}
 
-		// Number of bits read in the last read operation
-		public int LastReadBitCount { get; private set; } = 0; 
+		/// <summary>
+		/// Gets the number of bits read during the most recent read operation.
+		/// </summary>
+		public int LastReadBitCount { get; private set; } = 0;
 
 		/// <summary>
 		/// Gets the number of bits in the storage.
@@ -774,6 +797,7 @@ namespace GgoSoft.Storage
 				WriteBitIndex = StorageElementLength - value % StorageElementLength - 1;
 			}
 		}
+
 		/// <summary>
 		/// Inserts the specified <see cref="BitStorage"/> at the given index within the current <see cref="BitStorage"/>  and
 		/// returns a new <see cref="BitStorage"/> containing the result.
@@ -789,6 +813,7 @@ namespace GgoSoft.Storage
 		/// cref="BitStorage"/> inserted at the specified index.</returns>
 		/// <exception cref="ArgumentNullException">Thrown if <paramref name="bits"/> is <see langword="null"/>.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="index"/> is less than 0 or greater than <see cref="Count"/>.</exception>
+		[Pure]
 		public BitStorage Insert(int index, BitStorage bits)
 		{
 			if (bits is null) throw new ArgumentNullException(nameof(bits));
@@ -824,6 +849,7 @@ namespace GgoSoft.Storage
 			ReadIndex = tempReadIndex;
 			return result;
 		}
+
 		/// <summary>
 		/// Inserts the specified bits into the storage at the given index.
 		/// </summary>
@@ -832,12 +858,14 @@ namespace GgoSoft.Storage
 		/// <param name="bits">The value containing the bits to be inserted.</param>
 		/// <param name="bitsToWrite">The number of bits to write from the value. If null, all bits of the value are written.</param>
 		/// <returns>A new BitStorage instance with the specified bits inserted at the given index.</returns>
-		public BitStorage Insert<T>(int index, T bits, int? bitsToWrite = null) where T : struct 
+		[Pure]
+		public BitStorage Insert<T>(int index, T bits, int? bitsToWrite = null) where T : struct
 		{
 			var storage = new BitStorage();
 			storage.Write(bits, bitsToWrite);
 			return Insert(index, storage);
 		}
+
 		/// <summary>
 		/// Removes a range of bits from the current storage and returns a new BitStorage instance with the specified range
 		/// excluded.
@@ -850,6 +878,7 @@ namespace GgoSoft.Storage
 		/// <returns>A new BitStorage instance containing all bits from the original storage except for those in the specified range.</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when index or count is less than 0, index is greater than Count, or the range defined by index and count
 		/// exceeds the total number of bits in the storage.</exception>
+		[Pure]
 		public BitStorage RemoveRange(int index, int count)
 		{
 			if (count < 0) throw new ArgumentOutOfRangeException(nameof(count), count, "Cannot be less than 0");
@@ -859,8 +888,18 @@ namespace GgoSoft.Storage
 			var tempReadIndex = ReadIndex;
 
 			// Create result
-			var result = new BitStorage();
+			BitStorage result;
 
+			// if removing from the end, just create a new storage with the count reduced
+			if (count + index == Count)
+			{
+				result = new(this);
+				result.Count -= count;
+				result.WriteIndex = result.Count;
+				return result;
+			}
+
+			result = new BitStorage();
 			// starting from the beginning, read up to the index
 			ReadIndex = 0;
 			var prefix = ReadEnumerable<int>(index);
@@ -883,51 +922,111 @@ namespace GgoSoft.Storage
 			{
 				result.Write(b, LastReadBitCount);
 			}
-
 			// restore the read index
 			ReadIndex = tempReadIndex;
+
+			// set the result write index to 0
+			result.WriteIndex = result.Count;
+			result.ReadIndex = 0;
 			return result;
 		}
+
 		/// <summary>
 		/// Removes a specified number of bits from the end of the bit storage and returns the resulting BitStorage instance.
 		/// </summary>
 		/// <param name="count">The number of bits to remove from the end. Must be greater than or equal to 0 and less than or equal to the
 		/// current bit count.</param>
 		/// <returns>A new BitStorage instance with the specified number of bits removed from the end.</returns>
+		[Pure]
 		public BitStorage TrimEnd(int count)
 		{
 			// Remove "count" bits from the end of the storage
 			return RemoveRange(Count - count, count);
 		}
+
 		[ExcludeFromCodeCoverage]
-		public string PrintBits(int start=0, int? end = null)
+		public string PrintBits(int start = 0, int? end = null)
 		{
 			int byteStart = start / StorageElementLength;
-			int byteIndex = byteStart * StorageElementLength;
 			end ??= Count;
 			int byteEnd = (end.Value + StorageElementLength - 1) / StorageElementLength;
 			System.Text.StringBuilder sb = new();
+			System.Text.StringBuilder footer = new();
 			for (int i = byteStart; i < byteEnd; i++)
 			{
 				var padded = Convert.ToString(data[i], 2).PadLeft(StorageElementLength, '0');
 				var extraBits = Count % StorageElementLength;
+				var elementData = data[i];
 				if (i == byteEnd - 1 && extraBits > 0)
 				{
+					var mask = (byte)(GetMask(8) & ~GetMask(StorageElementLength - extraBits));
+					elementData &= mask;
 					extraBits = StorageElementLength - extraBits;
 					padded = $"{padded[..^extraBits]}{new string('.', extraBits)}";
 				}
-				sb.Append($"{padded}\t{data[i]}{Environment.NewLine}");
+				footer.Append($"{padded} ");
+				sb.Append($"{padded}\t{elementData}{Environment.NewLine}");
 			}
-			for (int i = byteIndex; i < end; i++)
-			{
-				sb.Append(this[i] ? '1' : '0');
-				if (i % StorageElementLength == StorageElementLength - 1)
-				{
-					sb.Append(' ');
-				}
-			}
+
+			sb.Append(footer.ToString().Trim(' ', '.'));
 			Console.WriteLine(sb.ToString());
 			return sb.ToString();
+		}
+
+		/// <summary>
+		/// Determines whether the current BitStorage instance is equal to another object.
+		/// </summary>
+		/// <remarks>Equality is determined by comparing the number of bits and the values of all bits in both
+		/// instances. Any unused bits in the underlying storage are ignored during the comparison. This method provides
+		/// value-based equality rather than reference equality.</remarks>
+		/// <param name="obj">The object to compare with the current BitStorage instance.</param>
+		/// <returns>true if the specified object is a BitStorage instance with the same number of bits and identical bit values;
+		/// otherwise, false.</returns>
+		public bool ContentEquals(BitStorage? other)
+		{
+			// Quick check for null or different counts
+			if (other is null || other.Count != Count)
+			{
+				return false;
+			}
+
+			// quick check for empty storage
+			if (Count == 0)
+			{
+				return true;
+			}
+
+			// There could be stuff in the last storage element that is not part of the data.  RemoveRange may just change the Count
+			// and not clear the remaining data, so we need to only compare the bits that are part of the data.
+			int fullElements = Count / StorageElementLength;
+			int remainingBits = Count % StorageElementLength;
+
+			var originalDataSpan = CollectionsMarshal.AsSpan(data);
+			var otherDataSpan = CollectionsMarshal.AsSpan(other.data);
+			int totalElements = remainingBits == 0 ? fullElements : fullElements + 1;
+			
+
+			// If the last storage element is the same, we can check all of the data
+			if (other.data[totalElements - 1] == data[totalElements - 1])
+			{
+				return originalDataSpan[0..totalElements].SequenceEqual(otherDataSpan[0..totalElements]);
+			}
+
+
+			// If the last storage element is not the same and there are no remaining bits, they are not equal
+			if (remainingBits == 0)
+			{
+				return false;
+			}
+
+			// The last storage element isn't the same, but it may be that the bits that are part of the data are the same
+			if (data[fullElements] >> (StorageElementLength - remainingBits) != (other.data[fullElements] >> (StorageElementLength - remainingBits)))
+			{
+				return false;
+			}
+
+			// The last part of the data is the same, so check all of the full elements, this *should* be faster than checking each byte
+			return originalDataSpan[0..fullElements].SequenceEqual(otherDataSpan[0..fullElements]);
 		}
 	}
 }
