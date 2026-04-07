@@ -5,4 +5,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Storage\BitStorage2.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Storage\BitStorage2.cs" />
+  </ItemGroup>
+
 </Project>
