@@ -365,3 +365,4 @@ FodyWeavers.xsd
 /BitStorage/.vshistory
 /.vshistory
 /TestBitStorage/.vshistory
+/BitStorage/Serialize/.vshistory/BitFieldAttribute.cs
