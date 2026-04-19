@@ -146,7 +146,7 @@ namespace TestBitStorage
 
 			Assert.NotNull(caughtException.ParamName);
 			Assert.Equal("bitsPerElement", caughtException.ParamName);
-			Assert.Equal("Bits Per Element (-1) must be between 1 and 31 (Parameter 'bitsPerElement')", caughtException.Message);
+			Assert.Equal("Bits Per Element (-1) must be between 1 and 32 (Parameter 'bitsPerElement')", caughtException.Message);
 		}
 
 		[Fact]
@@ -207,7 +207,7 @@ namespace TestBitStorage
 		public void Write_EnumerableInvalidType_ThrowsException()
 		{
 			var storage = new BitStorage();
-			var caughtException = Assert.Throws<ArgumentException>(() => storage.Write([DateTime.Now]));
+			var caughtException = Assert.Throws<NotSupportedException>(() => storage.Write([DateTime.Now]));
 			Assert.Equal("Type System.DateTime is not supported", caughtException.Message);
 		}
 
@@ -257,7 +257,7 @@ namespace TestBitStorage
 			var storage = new BitStorage();
 			var reader = storage.CreateReader();
 
-			var caughtException = Assert.Throws<ArgumentException>(() => reader.Read(out DateTime _, 1));
+			var caughtException = Assert.Throws<NotSupportedException>(() => reader.Read(out DateTime _, 1));
 
 			Assert.Equal("Type System.DateTime is not supported", caughtException.Message);
 		}
@@ -267,7 +267,7 @@ namespace TestBitStorage
 		{
 			var storage = new BitStorage();
 
-			var caughtException = Assert.Throws<ArgumentException>(() => storage.Write(DateTime.Now));
+			var caughtException = Assert.Throws<NotSupportedException>(() => storage.Write(DateTime.Now));
 
 			Assert.Equal("Type System.DateTime is not supported", caughtException.Message);
 		}
@@ -282,28 +282,6 @@ namespace TestBitStorage
 			Assert.NotNull(caughtException.ParamName);
 			Assert.Equal("bitsToRead", caughtException.ParamName);
 			Assert.Equal($"Number of bits (-1) is out of range of 0-{storage.Count} (Parameter 'bitsToRead')", caughtException.Message);
-		}
-
-		[Fact]
-		public void Write_BitsToWriteNegative_ThrowsException()
-		{
-			var storage = new BitStorage();
-			var caughtException = Assert.Throws<ArgumentOutOfRangeException>(() => storage.Write(1, -1));
-
-			Assert.NotNull(caughtException.ParamName);
-			Assert.Equal("bitsToWrite", caughtException.ParamName);
-			Assert.Equal($"Number of bits (-1) is out of range of 0-31 (Parameter 'bitsToWrite')", caughtException.Message);
-		}
-
-		[Fact]
-		public void Write_NegativeValue_ThrowsException()
-		{
-			var storage = new BitStorage();
-			var caughtException = Assert.Throws<ArgumentOutOfRangeException>(() => storage.Write(-1));
-
-			Assert.NotNull(caughtException.ParamName);
-			Assert.Equal("bits", caughtException.ParamName);
-			Assert.Equal($"Value (-1) needs to be non-negative (Parameter 'bits')", caughtException.Message);
 		}
 
 		[Fact]
@@ -355,7 +333,7 @@ namespace TestBitStorage
 		{
 			var storage = new BitStorage();
 			var reader = storage.CreateReader();
-			var caughtException = Assert.Throws<ArgumentException>(() => reader.ReadEnumerable<DateTime>());
+			var caughtException = Assert.Throws<NotSupportedException>(() => reader.ReadEnumerable<DateTime>());
 
 			Assert.Equal("Type System.DateTime is not supported", caughtException.Message);
 		}

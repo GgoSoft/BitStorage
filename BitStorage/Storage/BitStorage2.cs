@@ -272,21 +272,6 @@
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private static bool IsNegative<T>(T value) where T : struct
-		{
-			if (typeof(T) == typeof(sbyte))
-				return (sbyte)(object)value < 0;
-			if (typeof(T) == typeof(short))
-				return (short)(object)value < 0;
-			if (typeof(T) == typeof(int))
-				return (int)(object)value < 0;
-			if (typeof(T) == typeof(long))
-				return (long)(object)value < 0;
-
-			// All other supported types are unsigned or non-negative by definition
-			return false;
-		}
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static ulong ToUInt64<T>(T value) where T : struct
 		{
 			if (typeof(T) == typeof(byte))
@@ -300,7 +285,6 @@
 			if (typeof(T) == typeof(char))
 				return (char)(object)value;
 
-			// signed types (you already enforce non-negative)
 			if (typeof(T) == typeof(sbyte))
 				return (ulong)(sbyte)(object)value;
 			if (typeof(T) == typeof(short))

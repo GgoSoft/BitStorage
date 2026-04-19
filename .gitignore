@@ -361,8 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/BitStorage/Storage/.vshistory
-/BitStorage/.vshistory
-/.vshistory
-/TestBitStorage/.vshistory
-/BitStorage/Serialize/.vshistory/BitFieldAttribute.cs
+# /BitStorage/Storage/.vshistory
+# /BitStorage/.vshistory
+.vshistory/
+# /TestBitStorage/.vshistory
+# /BitStorage/Serialize/.vshistory/BitFieldAttribute.cs

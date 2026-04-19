@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using static GgoSoft.Storage.BitStorage;
 
 namespace GgoSoft.Storage
 {
@@ -96,6 +95,14 @@ namespace GgoSoft.Storage
 			}
 		}
 
+		/// <summary>
+		/// Gets or sets a value indicating whether the default signing mode is enabled for supported operations.
+		/// </summary>
+		/// <remarks>When set to <see langword="true"/>, signing is enabled by default for operations that support it.
+		/// Use this property to control the application's signing behavior globally, without configuring each operation
+		/// individually.</remarks>
+		public bool DefaultSignedMode { get; set; } = false;
+
 		// Helper method to read a single boolean value
 		private bool ReadBool()
 		{
@@ -120,9 +127,9 @@ namespace GgoSoft.Storage
 			};
 			return other;
 		}
-		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue) where T : struct
+		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue, bool? signed = null) where T : struct
 		{
-			return new BitStorageValueReader<T>(this, bitsPerValue);
+			return new BitStorageValueReader<T>(this, bitsPerValue, signed ?? DefaultSignedMode);
 		}
 
 		/// <summary>
@@ -141,7 +148,7 @@ namespace GgoSoft.Storage
 				int length = end - start;
 				bool[] returnValue = new bool[length];
 				// get the data element location and bit mask for the start of the range, then loop over each item in the range
-				var (element, bitMask) = GetLocation(start);
+				var (element, bitMask) = BitStorage.GetLocation(start);
 				for (int i = 0; i < length; i++)
 				{
 					// check if the bit is set in the data element and set the return value accordingly
@@ -151,7 +158,7 @@ namespace GgoSoft.Storage
 					bitMask >>= 1;
 					if (bitMask == 0)
 					{
-						bitMask = 1 << (StorageElementLength - 1);
+						bitMask = 1 << (BitStorage.StorageElementLength - 1);
 						element++;
 					}
 				}
@@ -179,7 +186,7 @@ namespace GgoSoft.Storage
 
 		// Extra method so the yield return can be used properly, otherwise, the thrown exception may not be
 		// thrown until the enumeration is read
-		internal IEnumerable<T> ReadEnumerableHelper<T>(int bitsToRead, int bitsPerElement, BitsRead? bitsRead = null) where T : struct
+		internal IEnumerable<T> ReadEnumerableHelper<T>(int bitsToRead, int bitsPerElement, BitsRead? bitsRead = null, bool? signed = null) where T : struct
 		{
 			System.Diagnostics.Debug.Assert(bitsToRead >= 0, "bitsToRead must be validated by the caller.");
 			System.Diagnostics.Debug.Assert(bitsPerElement > 0, "typeLength must be validated by the caller.");
@@ -196,7 +203,7 @@ namespace GgoSoft.Storage
 					throw new InvalidOperationException("BitStorageReader.ReadIndex was modified externally during enumeration.");
 				}
 
-				int bitsReadCount = Read(out T returnValue, (i < numValues ? bitsPerElement : extraBits));
+				int bitsReadCount = Read(out T returnValue, (i < numValues ? bitsPerElement : extraBits), signed);
 				if (bitsRead != null)
 				{
 					bitsRead.BitsReadCount = bitsReadCount;
@@ -293,7 +300,7 @@ namespace GgoSoft.Storage
 		/// <exception cref="ArgumentException">
 		/// Thrown if <typeparamref name="T"/> is not a supported type.
 		/// </exception>
-		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead = null, int? bitsPerElement = null, BitsRead? bitsRead = null) where T : struct
+		public IEnumerable<T> ReadEnumerable<T>(int? bitsToRead = null, int? bitsPerElement = null, BitsRead? bitsRead = null, bool? signed = null) where T : struct
 		{
 			if (bitsToRead < 0)
 			{
@@ -309,22 +316,19 @@ namespace GgoSoft.Storage
 				effectiveBits = remainingBits;
 			}
 
-			Type tType = typeof(T);
 			LastReadBitCount = 0;
 
-			if (!BitStorage.TypeLengths.TryGetValue(tType, out int typeLength))
-			{
-				throw new ArgumentException($"Type {tType} is not supported");
-			}
+			var typeWidth = BitStorage.GetTypeWidth<T>();
+
 			if(bitsPerElement is not null)
 			{
-				if(bitsPerElement > typeLength || bitsPerElement <= 0)
+				if(bitsPerElement > typeWidth || bitsPerElement <= 0)
 				{
-					throw new ArgumentOutOfRangeException(nameof(bitsPerElement), $"bitsPerElement ({bitsPerElement}) must be between 1 and {typeLength}");
+					throw new ArgumentOutOfRangeException(nameof(bitsPerElement), $"bitsPerElement ({bitsPerElement}) must be between 1 and {typeWidth}");
 				}
-				typeLength = bitsPerElement.Value;
+				typeWidth = bitsPerElement.Value;
 			}
-			return ReadEnumerableHelper<T>(effectiveBits, typeLength, bitsRead);
+			return ReadEnumerableHelper<T>(effectiveBits, typeWidth, bitsRead, signed);
 		}
 
 		/// <summary>
@@ -334,9 +338,9 @@ namespace GgoSoft.Storage
 		/// <param name="bitsReadCount">Out parameter with the number of bits actually read</param>
 		/// <typeparam name="T">The data type to be read, this assumes the # of bits to be read is the length of T</typeparam>
 		/// <returns>The value read</returns>
-		public T Read<T>(out int bitsReadCount) where T : struct
+		public T Read<T>(out int bitsReadCount, bool? signed ) where T : struct
 		{
-			bitsReadCount = Read(out T returnValue);
+			bitsReadCount = Read(out T returnValue, signed: signed);
 			return returnValue;
 		}
 		/// <summary>
@@ -344,9 +348,9 @@ namespace GgoSoft.Storage
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
 		/// <returns></returns>
-		public T Read<T>() where T : struct
+		public T Read<T>(bool? signed = null) where T : struct
 		{
-			return Read<T>(out _);
+			return Read<T>(out _, signed: signed);
 		}
 
 		/// <summary>
@@ -359,7 +363,7 @@ namespace GgoSoft.Storage
 		/// <param name="bitsToRead">The number of bits to read. Must be between 0 and the maximum number of bits in <typeparamref name="T"/>.</param>
 		/// <returns>The actual number of bits read.</returns>
 		/// <exception cref="ArgumentOutOfRangeException">Thrown when the number of bits is out of the valid range of <typeparamref name="T"/>.</exception>
-		public int Read<T>(out T bitsRead, int? bitsToRead = null) where T : struct
+		public int Read<T>(out T bitsRead, int? bitsToRead = null, bool? signed = null) where T : struct
 		{
 			if (typeof(T) == typeof(bool))
 			{
@@ -379,15 +383,15 @@ namespace GgoSoft.Storage
 				return LastReadBitCount;
 			}
 			LastReadBitCount = 0;
-			// if the number of bits is more than can be put into a ulong, throw an error
-			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
-			{
-				throw new ArgumentException($"Type {typeof(T)} is not supported");
-			}
+
+			bool adjustedSigned = signed ?? DefaultSignedMode;
+
+			var typeWidth = BitStorage.GetTypeWidth<T>();
+
 			ulong tempReturnValue = 0;
-			if (bitsToRead < 0 || bitsToRead > typeLength)
+			if (bitsToRead < 0 || bitsToRead > typeWidth)
 			{
-				throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of 0-{typeLength}");
+				throw new ArgumentOutOfRangeException(nameof(bitsToRead), $"Number of bits ({bitsToRead}) is out of range of 0-{typeWidth}");
 			}
 			// take the index of the byte we are writing to minus the index where we are reading minus 1 gives the total number of whole
 			// bytes left * 8 = bits in those bytes, add to that the read bit index on the front side (zero-based index, so add 1) and the
@@ -395,7 +399,7 @@ namespace GgoSoft.Storage
 			// this gives the total remaining data size.
 			int remainingDataSize = _storage.Count - ReadIndex;
 			// if there aren't enough bits remaining, set the number of bits to the remaining
-			int tempBits = bitsToRead ?? typeLength;
+			int tempBits = bitsToRead ?? typeWidth;
 			if (tempBits > remainingDataSize)
 			{
 				tempBits = remainingDataSize;
@@ -418,6 +422,10 @@ namespace GgoSoft.Storage
 				ReadBitIndex -= tempLength;
 				tempBits -= tempLength;
 			}
+			if(adjustedSigned)
+			{
+				tempReturnValue = (ulong)DecodeTwosComplement(tempReturnValue, returnBits);
+			}
 			bitsRead = FromUInt64<T>(tempReturnValue);
 			if(returnBits < 0)
 			{
@@ -426,29 +434,37 @@ namespace GgoSoft.Storage
 			LastReadBitCount = returnBits;
 			return returnBits;
 		}
+
+		private static long DecodeTwosComplement(ulong raw, int bits)
+		{
+			if (bits <= 0 || bits > 64) throw new ArgumentOutOfRangeException(nameof(bits));
+
+			// For full 64-bit width, the raw value already represents the signed long correctly.
+			if (bits == 64)
+				return (long)raw;
+
+			ulong signBit = 1UL << (bits - 1);
+			if ((raw & signBit) == 0)
+				return (long)raw; // positive
+
+			// mask of bits above N set to 1: ~((1UL << bits) - 1) is safe because bits < 64 here
+			ulong mask = ~((1UL << bits) - 1);
+			return (long)(raw | mask);
+		}
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static T FromUInt64<T>(ulong value) where T : struct
 		{
-			if (typeof(T) == typeof(byte))
-				return (T)(object)(byte)value;
-			if (typeof(T) == typeof(ushort))
-				return (T)(object)(ushort)value;
-			if (typeof(T) == typeof(uint))
-				return (T)(object)(uint)value;
-			if (typeof(T) == typeof(ulong))
-				return (T)(object)value;
-			if (typeof(T) == typeof(char))
-				return (T)(object)(char)value;
+			if (typeof(T) == typeof(byte))   return (T)(object)(byte)value;
+			if (typeof(T) == typeof(ushort)) return (T)(object)(ushort)value;
+			if (typeof(T) == typeof(uint))   return (T)(object)(uint)value;
+			if (typeof(T) == typeof(ulong))  return (T)(object)value;
+			if (typeof(T) == typeof(char))   return (T)(object)(char)value;
 
-			// signed types (you enforce non-negative already)
-			if (typeof(T) == typeof(sbyte))
-				return (T)(object)(sbyte)value;
-			if (typeof(T) == typeof(short))
-				return (T)(object)(short)value;
-			if (typeof(T) == typeof(int))
-				return (T)(object)(int)value;
-			if (typeof(T) == typeof(long))
-				return (T)(object)(long)value;
+			if (typeof(T) == typeof(sbyte))  return (T)(object)(sbyte)value;
+			if (typeof(T) == typeof(short))  return (T)(object)(short)value;
+			if (typeof(T) == typeof(int))    return (T)(object)(int)value;
+			if (typeof(T) == typeof(long))   return (T)(object)(long)value;
 
 			throw new NotSupportedException($"Type {typeof(T)} is not supported.");
 		}

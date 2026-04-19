@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Contracts;
 using System.Linq;
@@ -102,18 +101,20 @@ namespace GgoSoft.Storage
 			}
 		}
 		// This holds all the data types allowed and the size of them in bits
-		internal static readonly ImmutableDictionary<Type, int> TypeLengths = ImmutableDictionary.CreateRange(
-			new KeyValuePair<Type, int>[] {
-				new ( typeof(ulong), sizeof(ulong) * 8),
-				new ( typeof(uint), sizeof(uint) * 8),
-				new ( typeof(ushort), sizeof(ushort) * 8),
-				new ( typeof(char), sizeof(char) * 8),
-				new ( typeof(byte), sizeof(byte) * 8),
-				new ( typeof(long), sizeof(long) * 8 - 1), // Only positive numbers are allowed, so -1
-				new ( typeof(int), sizeof(int) * 8 - 1), // Only positive numbers are allowed, so -1
-				new ( typeof(short), sizeof(short) * 8 - 1), // Only positive numbers are allowed, so -1
-				new ( typeof(sbyte), sizeof(sbyte) * 8 - 1) // Only positive numbers are allowed, so -1
-			});
+		internal static int GetTypeWidth<T>() => GetTypeWidth<T>();
+		internal static int GetTypeWidth(Type T) => T switch
+		{
+			Type _ when T == typeof(int) => 32,
+			Type _ when T == typeof(uint) => 32,
+			Type _ when T == typeof(long) => 64,
+			Type _ when T == typeof(ulong) => 64,
+			Type _ when T == typeof(short) => 16,
+			Type _ when T == typeof(ushort) => 16,
+			Type _ when T == typeof(byte) => 8,
+			Type _ when T == typeof(sbyte) => 8,
+			Type _ when T == typeof(char) => 16,
+			_ => throw new NotSupportedException($"Type {T} is not supported")
+		};
 
 		//// Index of the bit within the current byte being written to. This will go down as each bit is written and
 		//// will reset to the last bit of the next storage element if the write index is less than 0
@@ -184,9 +185,9 @@ namespace GgoSoft.Storage
 		/// This overload creates a value reader beginning at bit index 0.
 		/// For mid-stream sequences, use <see cref="BitStorageReader.CreateValueReader{T}(int)"/>.
 		/// </remarks>
-		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue) where T : struct
+		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue, bool signed = false) where T : struct
 		{
-			return new BitStorageValueReader<T>(CreateReader(), bitsPerValue);
+			return new BitStorageValueReader<T>(CreateReader(), bitsPerValue, signed);
 		}
 
 		/// <summary>
@@ -314,7 +315,7 @@ namespace GgoSoft.Storage
 		}
 
 		/// The number of bits in each element of the storage (e.g., byte = 8 bits).
-		internal static int StorageElementLength { get; } = TypeLengths[typeof(byte)]; // Number of bits in a byte
+		internal static int StorageElementLength { get; } = GetTypeWidth<byte>(); // Number of bits in a byte
 
 		// The index of the next bit to be written within the current element
 		private int WriteBitIndex
@@ -477,19 +478,16 @@ namespace GgoSoft.Storage
 				return WriteBoolean(bits, bitsToWrite);
 			}
 
-			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
-			{
-				throw new ArgumentException($"Type {typeof(T)} is not supported");
-			}
+			var typeWidth = GetTypeWidth<T>();
 			// If the elementBitsToWrite (the number of bits to write for each element) is specified, use that,
 			// otherwise use the type length (all bits in each element).
 			if (bitsPerElement != null)
 			{
-				if (bitsPerElement > typeLength || bitsPerElement <= 0)
+				if (bitsPerElement > typeWidth || bitsPerElement <= 0)
 				{
-					throw new ArgumentOutOfRangeException(nameof(bitsPerElement), $"Bits Per Element ({bitsPerElement}) must be between 1 and {typeLength}");
+					throw new ArgumentOutOfRangeException(nameof(bitsPerElement), $"Bits Per Element ({bitsPerElement}) must be between 1 and {typeWidth}");
 				}
-				typeLength = (int)bitsPerElement;
+				typeWidth = (int)bitsPerElement;
 			}
 
 			// Since "bits" is an enumerable, the length is not known until the end.  The "bitsToWrite" is
@@ -505,8 +503,8 @@ namespace GgoSoft.Storage
 			if (bitsToWrite is not null)
 			{
 				dataLength = bitsToWrite.Value;
-				numElements = dataLength / typeLength;
-				extraBits = dataLength % typeLength;
+				numElements = dataLength / typeWidth;
+				extraBits = dataLength % typeWidth;
 				end = (extraBits == 0 ? numElements : numElements + 1);
 			}
 
@@ -516,7 +514,7 @@ namespace GgoSoft.Storage
 			{
 				var iterValue = ToUInt64(value);
 				// bitLength will be the size of the number until the last number, which will be the extra bits
-				int bitLength = typeLength;
+				int bitLength = typeWidth;
 				// If the "bitsToWrite" is not null, this will be true on the last element to write
 				if (bitsToWrite is not null && i == numElements)
 				{
@@ -534,10 +532,21 @@ namespace GgoSoft.Storage
 			return this;
 		}
 
+		/// <summary>
+		/// Writes a sequence of boolean values to the bit storage, grouping them according to the storage element's bit
+		/// length.
+		/// </summary>
+		/// <remarks>If the number of bits written is not a multiple of the storage element's bit length, the
+		/// remaining bits are written as a final, partial group. This method processes the input in groups determined by the
+		/// storage element's bit length.</remarks>
+		/// <typeparam name="T">The type of the elements in the bits collection. Must be a value type that can be cast to Boolean.</typeparam>
+		/// <param name="bits">An enumerable collection of values representing bits to write. Each value is interpreted as a Boolean.</param>
+		/// <param name="bitsToWrite">The maximum number of bits to write from the collection, or null to write all available bits.</param>
+		/// <returns>The current BitStorage instance, enabling method chaining.</returns>
 		private BitStorage WriteBoolean<T>(IEnumerable<T> bits, int? bitsToWrite) where T : struct
 		{
 			ulong value = 0;
-			int bitLength = TypeLengths[value.GetType()];
+			int bitLength = GetTypeWidth<ulong>();
 			int i = 0;
 			bool wroteLast = false;
 			foreach (var bit in bits)
@@ -597,20 +606,15 @@ namespace GgoSoft.Storage
 				}
 				return this;
 			}
-			if (!TypeLengths.TryGetValue(typeof(T), out int typeLength))
+
+			var typeWidth = GetTypeWidth<T>();
+
+			if (bitsToWrite < 0 || bitsToWrite > typeWidth)
 			{
-				throw new ArgumentException($"Type {typeof(T)} is not supported");
-			}
-			if (bitsToWrite < 0 || bitsToWrite > typeLength)
-			{
-				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) is out of range of 0-{typeLength}");
-			}
-			if (IsNegative(bits))
-			{
-				throw new ArgumentOutOfRangeException(nameof(bits), $"Value ({bits}) needs to be non-negative");
+				throw new ArgumentOutOfRangeException(nameof(bitsToWrite), $"Number of bits ({bitsToWrite}) is out of range of 0-{typeWidth}");
 			}
 			// tempLength is the number of bits left to write
-			int tempLength = bitsToWrite ?? typeLength;
+			int tempLength = bitsToWrite ?? typeWidth;
 			// The mask is the used to mask off unwanted bits. The mask will be all 1's for the number of bits requested
 			// e.g. if the number of bits requested is 5, the mask will be 0b11111
 			ulong mask = GetMask(tempLength);
@@ -1012,46 +1016,20 @@ namespace GgoSoft.Storage
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private static bool IsNegative<T>(T value) where T : struct
-		{
-			if (typeof(T) == typeof(sbyte))
-				return (sbyte)(object)value < 0;
-			if (typeof(T) == typeof(short))
-				return (short)(object)value < 0;
-			if (typeof(T) == typeof(int))
-				return (int)(object)value < 0;
-			if (typeof(T) == typeof(long))
-				return (long)(object)value < 0;
-
-			// All other supported types are unsigned or non-negative by definition
-			return false;
-		}
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static ulong ToUInt64<T>(T value) where T : struct
 		{
-			if (typeof(T) == typeof(byte))
-				return (byte)(object)value;
-			if (typeof(T) == typeof(ushort))
-				return (ushort)(object)value;
-			if (typeof(T) == typeof(uint))
-				return (uint)(object)value;
-			if (typeof(T) == typeof(ulong))
-				return (ulong)(object)value;
-			if (typeof(T) == typeof(char))
-				return (char)(object)value;
+			if (typeof(T) == typeof(byte))   return (byte)(object)value;
+			if (typeof(T) == typeof(ushort)) return (ushort)(object)value;
+			if (typeof(T) == typeof(uint))   return (uint)(object)value;
+			if (typeof(T) == typeof(ulong))  return (ulong)(object)value;
+			if (typeof(T) == typeof(char))   return (char)(object)value;
 
-			// signed types (you already enforce non-negative)
-			if (typeof(T) == typeof(sbyte))
-				return (ulong)(sbyte)(object)value;
-			if (typeof(T) == typeof(short))
-				return (ulong)(short)(object)value;
-			if (typeof(T) == typeof(int))
-				return (ulong)(int)(object)value;
-			if (typeof(T) == typeof(long))
-				return (ulong)(long)(object)value;
+			if (typeof(T) == typeof(sbyte))  return (ulong)(sbyte)(object)value;
+			if (typeof(T) == typeof(short))  return (ulong)(short)(object)value;
+			if (typeof(T) == typeof(int))    return (ulong)(int)(object)value;
+			if (typeof(T) == typeof(long))   return (ulong)(long)(object)value;
 
 			throw new NotSupportedException($"Type {typeof(T)} is not supported.");
 		}
-
 	}
 }

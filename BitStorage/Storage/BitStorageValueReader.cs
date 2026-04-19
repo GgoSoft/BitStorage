@@ -11,18 +11,18 @@ namespace GgoSoft.Storage
 	/// <typeparam name="T">The decoded value type.</typeparam>
 	public sealed class BitStorageValueReader<T> where T : struct
 	{
-		//private readonly BitStorage _storage;
 		private readonly BitStorageReader _seqReader;
 		private readonly BitStorageReader _idxReader;
 		private BitStorageReader _lastReader; // used to track which reader was used for the most recent read operation
 		private readonly int _bitsPerElement;
 		private readonly int _startBitIndex; // used for alignment checks
+		private readonly bool _signed;
 
 		/// <summary>
 		/// Creates a typed reader using the default bit width for <typeparamref name="T"/>.
 		/// </summary>
-		internal BitStorageValueReader(BitStorageReader reader)
-			: this(reader, GetDefaultBitWidth()) { }
+		internal BitStorageValueReader(BitStorageReader reader, bool signed = false)
+			: this(reader, BitStorage.GetTypeWidth<T>(), signed) { }
 
 		/// <summary>
 		/// Creates a typed reader using the specified bit width.
@@ -32,11 +32,11 @@ namespace GgoSoft.Storage
 		/// <exception cref="ArgumentOutOfRangeException">
 		/// Thrown if <paramref name="bitsPerElement"/> is less than 1 or exceeds the maximum allowed for <typeparamref name="T"/>.
 		/// </exception>
-		internal BitStorageValueReader(BitStorageReader reader, int bitsPerElement)
+		internal BitStorageValueReader(BitStorageReader reader, int bitsPerElement, bool signed = false)
 		{
 			_seqReader = reader ?? throw new ArgumentNullException(nameof(reader));
 
-			int maxWidth = GetDefaultBitWidth();
+			int maxWidth = BitStorage.GetTypeWidth<T>();
 			if (bitsPerElement <= 0 || bitsPerElement > maxWidth)
 				throw new ArgumentOutOfRangeException(nameof(bitsPerElement),
 					$"bitsPerElement ({bitsPerElement}) must be between 1 and {maxWidth} for type {typeof(T).Name}.");
@@ -46,6 +46,7 @@ namespace GgoSoft.Storage
 
 			_idxReader = reader.Clone();
 			_lastReader = _seqReader; // either reader is fine, but we'll default to the sequential reader for tracking purposes
+			_signed = signed;
 		}
 
 		/// <summary>
@@ -106,7 +107,7 @@ namespace GgoSoft.Storage
 						$"Index ({index}) is out of range 0–{Count - 1}.");
 
 				_idxReader.ReadIndex = _startBitIndex + intIndex * _bitsPerElement;
-				_idxReader.Read(out T value, _bitsPerElement);
+				_idxReader.Read(out T value, _bitsPerElement, _signed);
 				_lastReader = _idxReader;
 				return value;
 			}
@@ -133,7 +134,7 @@ namespace GgoSoft.Storage
 
 				_lastReader = _idxReader;
 				// Use the existing low-level enumerator and materialize
-				return _idxReader.ReadEnumerableHelper<T>(bitsToRead, _bitsPerElement).ToArray();
+				return _idxReader.ReadEnumerableHelper<T>(bitsToRead, _bitsPerElement, signed: _signed).ToArray();
 			}
 		}
 
@@ -147,7 +148,7 @@ namespace GgoSoft.Storage
 		public int Read(out T value)
 		{
 			EnsureAligned();
-			var returnValue = _seqReader.Read(out value, _bitsPerElement);
+			var returnValue = _seqReader.Read(out value, _bitsPerElement, signed: _signed);
 			_lastReader = _seqReader;
 			return returnValue;
 		}
@@ -158,7 +159,7 @@ namespace GgoSoft.Storage
 		public T Read()
 		{
 			EnsureAligned();
-			_seqReader.Read(out T returnValue, _bitsPerElement);
+			_seqReader.Read(out T returnValue, _bitsPerElement, signed: _signed);
 			_lastReader = _seqReader;
 			return returnValue;
 		}
@@ -197,19 +198,7 @@ namespace GgoSoft.Storage
 			if (bitsToReadLong > int.MaxValue)
 				throw new OverflowException("Bit count exceeds Int32 range.");
 			_lastReader = _seqReader;
-			return _seqReader.ReadEnumerableHelper<T>((int)bitsToReadLong, _bitsPerElement);
-		}
-
-		/// <summary>
-		/// Gets the default bit width for <typeparamref name="T"/> as defined by <see cref="BitStorage.TypeLengths"/>.
-		/// </summary>
-		private static int GetDefaultBitWidth()
-		{
-			if (!BitStorage.TypeLengths.TryGetValue(typeof(T), out int width))
-				throw new NotSupportedException(
-					$"Type {typeof(T).Name} is not supported by BitStorageValueReader.");
-
-			return width;
+			return _seqReader.ReadEnumerableHelper<T>((int)bitsToReadLong, _bitsPerElement, signed: _signed);
 		}
 
 		private void EnsureAligned()
