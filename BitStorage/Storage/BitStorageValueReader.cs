@@ -32,16 +32,20 @@ namespace GgoSoft.Storage
 		/// <exception cref="ArgumentOutOfRangeException">
 		/// Thrown if <paramref name="bitsPerElement"/> is less than 1 or exceeds the maximum allowed for <typeparamref name="T"/>.
 		/// </exception>
-		internal BitStorageValueReader(BitStorageReader reader, int bitsPerElement, bool signed = false)
+		internal BitStorageValueReader(BitStorageReader reader, int? bitsPerElement = null, bool signed = false)
 		{
 			_seqReader = reader ?? throw new ArgumentNullException(nameof(reader));
 
 			int maxWidth = BitStorage.GetTypeWidth<T>();
+			if(bitsPerElement == null)
+			{
+				bitsPerElement = maxWidth;
+			}
 			if (bitsPerElement <= 0 || bitsPerElement > maxWidth)
 				throw new ArgumentOutOfRangeException(nameof(bitsPerElement),
 					$"bitsPerElement ({bitsPerElement}) must be between 1 and {maxWidth} for type {typeof(T).Name}.");
 
-			_bitsPerElement = bitsPerElement;
+			_bitsPerElement = bitsPerElement.Value;
 			_startBitIndex = reader.ReadIndex;
 
 			_idxReader = reader.Clone();

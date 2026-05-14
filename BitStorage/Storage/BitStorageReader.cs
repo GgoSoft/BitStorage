@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace GgoSoft.Storage
@@ -112,7 +113,7 @@ namespace GgoSoft.Storage
 				return false;
 			}
 			int mask = 1 << ReadBitIndex;
-			bool returnValue = (_storage.data[readByteIndex] & mask) != 0;
+			bool returnValue = (_storage._store[readByteIndex] & mask) != 0;
 			LastReadBitCount = 1;
 			ReadBitIndex--;
 			return returnValue;
@@ -127,7 +128,7 @@ namespace GgoSoft.Storage
 			};
 			return other;
 		}
-		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue, bool? signed = null) where T : struct
+		public BitStorageValueReader<T> CreateValueReader<T>(int? bitsPerValue = null, bool? signed = null) where T : struct
 		{
 			return new BitStorageValueReader<T>(this, bitsPerValue, signed ?? DefaultSignedMode);
 		}
@@ -152,7 +153,7 @@ namespace GgoSoft.Storage
 				for (int i = 0; i < length; i++)
 				{
 					// check if the bit is set in the data element and set the return value accordingly
-					returnValue[i] = (_storage.data[element] & bitMask) > 0;
+					returnValue[i] = (_storage._store[element] & bitMask) > 0;
 					// shift the bit mask to the right to get the next bit in the data element and reset the bit mask and element
 					// index if it goes to 0
 					bitMask >>= 1;
@@ -180,7 +181,7 @@ namespace GgoSoft.Storage
 				// get the data element location and bit mask for the index
 				var (element, bitMask) = BitStorage.GetLocation(convertedIndex);
 				// check if the bit is set in the data element and return the result
-				return (_storage.data[element] & bitMask) != 0;
+				return (_storage._store[element] & bitMask) != 0;
 			}
 		}
 
@@ -405,6 +406,35 @@ namespace GgoSoft.Storage
 				tempBits = remainingDataSize;
 			}
 			int returnBits = tempBits;
+			// FAST PATH: if aligned and reading >= 8 bits, read whole bytes directly
+			if (ReadBitIndex == BitStorage.StorageElementLength - 1 && tempBits >= 8)
+			{
+				int fullBytes = tempBits / 8;
+
+				// read fullBytes bytes in one go
+				ulong chunk = 0;
+				for (int i = 0; i < fullBytes; i++)
+				{
+					chunk = (chunk << 8) | _storage._store[readByteIndex];
+					readByteIndex++;
+				}
+
+				tempReturnValue = chunk;
+				tempBits -= fullBytes * 8;
+				LastReadBitCount += fullBytes * 8;
+
+				// if no remaining bits, finish early
+				if (tempBits == 0)
+				{
+					if (adjustedSigned)
+						tempReturnValue = (ulong)DecodeTwosComplement(tempReturnValue, LastReadBitCount);
+
+					bitsRead = FromUInt64<T>(tempReturnValue);
+					return LastReadBitCount;
+				}
+
+				// otherwise fall through to the existing bit‑loop for the remainder
+			}
 			// keep going around until there are no more bits requested
 			while (tempBits > 0)
 			{
@@ -416,9 +446,9 @@ namespace GgoSoft.Storage
 				}
 
 				int endBits = ReadBitIndex - tempLength + 1;
-				ulong bitMask = BitStorage.GetMask(tempLength);
+				ulong bitMask = BitStorage.Masks[tempLength];
 				tempReturnValue <<= tempLength;
-				tempReturnValue += ((ulong)_storage.data[readByteIndex] >> endBits) & bitMask;
+				tempReturnValue += ((ulong)_storage._store[readByteIndex] >> endBits) & bitMask;
 				ReadBitIndex -= tempLength;
 				tempBits -= tempLength;
 			}
@@ -467,6 +497,132 @@ namespace GgoSoft.Storage
 			if (typeof(T) == typeof(long))   return (T)(object)(long)value;
 
 			throw new NotSupportedException($"Type {typeof(T)} is not supported.");
+		}
+		public byte[] PeekBits(int bitCount)
+		{
+			if (bitCount < 0)
+				throw new ArgumentOutOfRangeException(nameof(bitCount));
+
+			int bitsAvailable = _storage.Count - ReadIndex;
+			int effectiveBits = Math.Min(bitCount, bitsAvailable);
+
+			if (effectiveBits == 0)
+				return Array.Empty<byte>();
+
+			// FAST PATH: byte-aligned and whole bytes requested
+			if (ReadBitIndex == BitStorage.StorageElementLength - 1 &&
+				effectiveBits >= 8 &&
+				(effectiveBits % 8) == 0)
+			{
+				int bytesNeeded = effectiveBits / 8;
+
+				var raw = _storage._store.Peek(readByteIndex, bytesNeeded);
+
+				// raw may contain fewer bytes (EOF), so trim
+				return raw[..bytesNeeded];
+			}
+
+			// SLOW PATH: arbitrary bit alignment
+			return PeekBitsSlow(effectiveBits);
+		}
+		private byte[] PeekBitsSlow(int bitCount)
+		{
+			int bytesNeeded = (bitCount + 7) / 8;
+
+			// Peek enough bytes to cover the window
+			var raw = _storage._store.Peek(readByteIndex, bytesNeeded + 1);
+
+			// if the _store is at the end, there may not be enough bytes available
+			bytesNeeded = Math.Min(bytesNeeded, raw.Length); 
+
+			byte[] result = new byte[bytesNeeded];
+
+			int highOffset = BitStorage.StorageElementLength - ReadBitIndex - 1; // 0–7, where 7 = MSB
+
+			int lowOffset = BitStorage.StorageElementLength - highOffset;
+
+			for (int byteIndex = 0; byteIndex < result.Length; byteIndex++)
+			{
+				byte b0 = raw[byteIndex];
+				// ternary is required for edge case where there may not be enough bytes available in the store to account for bitCount
+				byte b1 = (byteIndex + 1) < raw.Length ? raw[byteIndex + 1] : default;
+
+				// Shift left to drop high bits, shift right to drop low bits
+				byte combined = 
+					(byte)((b0 << highOffset) |
+					(b1 >> lowOffset));
+
+				result[byteIndex] = combined;
+			}
+
+			// Trim unused bits in the last byte
+			int extraBits = (bytesNeeded * 8) - bitCount;
+			if (extraBits > 0)
+			{
+				int mask = 0xFF << extraBits;
+				result[bytesNeeded - 1] &= (byte)mask;
+			}
+
+			return result;
+		}
+		public T PeekValue<T>(int? bitCount = null, bool? signed = null) where T : struct
+		{
+			// Determine bit width
+			int width = bitCount ?? BitStorage.GetTypeWidth<T>();
+			if (width < 0)
+				throw new ArgumentOutOfRangeException(nameof(bitCount));
+
+			// Get the raw bits
+			var bits = PeekBits(width);
+			if (bits.Length == 0)
+				return default;
+
+			// Combine bytes into a big-endian integer
+			ulong value = 0;
+			for (int i = 0; i < bits.Length; i++)
+			{
+				value = (value << 8) | bits[i];
+			}
+
+			// Remove unused low bits if width is not a multiple of 8
+			int extraBits = (bits.Length * 8) - width;
+			if (extraBits > 0)
+				value >>= extraBits;
+
+			// Apply signed mode if needed
+			bool adjustedSigned = signed ?? DefaultSignedMode;
+			if (adjustedSigned)
+				value = (ulong)DecodeTwosComplement(value, width);
+
+			return FromUInt64<T>(value);
+		}
+		public bool PeekBool()
+		{
+			// Peek the next byte from the underlying store
+			var raw = _storage._store.Peek(readByteIndex, 1);
+			if (raw.Length == 0)
+				return false; // EOF behavior matches ReadBool()
+
+			int mask = 1 << ReadBitIndex;
+			return (raw[0] & mask) != 0;
+		}
+		public bool[] PeekBools(int count)
+		{
+			var bytes = PeekBits(count);
+
+			int bitsAvailable = _storage.Count - ReadIndex;
+			int effectiveBits = Math.Min(count, bitsAvailable);
+
+			bool[] result = new bool[effectiveBits];
+
+			for (int i = 0; i < effectiveBits; i++)
+			{
+				int byteIndex = i / 8;
+				int bitIndex = 7 - (i % 8);
+				result[i] = (bytes[byteIndex] & (1 << bitIndex)) != 0;
+			}
+
+			return result;
 		}
 	}
 }

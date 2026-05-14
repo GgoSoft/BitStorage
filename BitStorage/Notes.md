@@ -303,3 +303,78 @@ If you want, I can now generate:
 - A **Cookbook section** showing how to serialize real‑world structures (PNG chunks, TCP headers, etc.)  
 
 Just tell me where you want to take this.
+
+# Attribute Field Notes
+- Bits
+    - Specifies how many bits to write for this field. This is the core of the bit storage serializer, allowing you to control the exact bit width of each field.
+    - Cannot be used with InferBits, as they serve different purposes.
+- Signed
+    - Specifies if the value should be treated as signed or unsigned when writing to the bit storage. This is important for correctly interpreting the bits, especially for negative numbers.
+    - If true, high bit will be signed bit. If false, all bits are value bits.
+    - If true, cannot be used with UnsignedMin/UnsignedMax
+    - If false, cannot have a min < 0
+    - Cannot be true if data type is unsigned (e.g., byte, ushort, uint, ulong)
+- Min
+    - Specifies the minimum value for a field. This can be used for validation or to optimize the number of bits needed to store the value.
+    - Cannot be negative if Signed is false.
+    - Cannot be used with UnsignedMin, as they serve different purposes.
+    - Must be less than either Max or UnsignedMax
+- Max
+    - Specifies the maximum value for a field. This can be used for validation or to optimize the number of bits needed to store the value.
+    - Cannot be negative if Signed is false.
+    - Cannot be used with UnsignedMax, as they serve different purposes.
+    - Must be greater than either Min or UnsignedMin
+- UnsignedMin
+    - Specifies the minimum value for a field. This can be used for validation or to optimize the number of bits needed to store the value.
+    - Cannot be used with Min, as they serve different purposes.
+    - Must be less than either Max or UnsignedMax
+- UnsignedMax
+    - Specifies the maximum value for a field. This can be used for validation or to optimize the number of bits needed to store the value.
+    - Cannot be used with Max, as they serve different purposes.
+    - Must be greater than either Min or UnsignedMin
+- InferBits
+    - Specifies whether the number of bits for this field should be inferred from either the min/max or data type range.
+    - Cannot be used with Bits, as they serve different purposes.
+- CountBitLength
+    - When serializing enumerables, the number of bits used to encode the element count
+    - Can only be used with enumerations
+    - Cannot be used with TerminatorValue, as they serve different purposes.
+- TerminatorValue
+    - When serializing enumerables with a terminator, the terminator element value (encoded using the element width).
+    - Can only be used with enumerations
+    - Cannot be used with CountBitLength, as they serve different purposes.
+- ConditionalProperty
+    - Optional name of another property on the same object used for simple conditional inclusion.
+    - If this property is null, false, or empty, the current field will be excluded.
+- ConditionalType
+    - Condition type implementing IFieldCondition
+    - Field will be written based on IFieldCondition.Evaluate
+    - Can be direct injected into the serializer, so can have constructor parameters for configuration
+    - Can also be instantiated with Activator.CreateInstance, so must have a public parameterless constructor
+    - May be reused across multiple fields, so should be designed to be reusable and stateless if possible
+- ConditionCombine
+    - How multiple conditional checks are combined when both ConditionalProperty and ConditionalType
+		(or multiple conditions) are present.
+	- Defaults to ConditionCombine.And
+- ConditionMode
+    - The evaluation mode for conditions: snapshot (evaluate against a snapshot of current values)
+		or incremental (evaluate as values are processed)
+- ConverterType
+    - Optional converter type used to transform between the CLR property and the bit-level representation.
+    - Converter will fully be responsible for read/write of field
+    - Must implement IBitConverter
+    - Can be direct injected into the serializer, so can have constructor parameters for configuration
+    - Can also be instantiated with Activator.CreateInstance, so must have a public parameterless constructor
+    - May be reused across multiple fields, so should be designed to be reusable and stateless if possible
+- ConverterMethod
+    - Optional method name on the converter type used to transform between the CLR property and the bit-level representation.
+- OmitIfEquals
+    - 
+- Order
+- Description
+- AllowNonPublicAccess
+  - When true, the builder may use non-public accessors for this property.
+- EnumerableCountField
+
+
+

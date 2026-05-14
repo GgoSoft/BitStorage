@@ -1,0 +1,13 @@
+﻿[*.cs]
+
+# CRRSP04: A misspelled word has been found
+dotnet_diagnostic.CRRSP04.severity = none
+
+# CRRSP08: A misspelled word has been found
+dotnet_diagnostic.CRRSP08.severity = none
+
+# CRRSP05: A misspelled word has been found
+dotnet_diagnostic.CRRSP05.severity = none
+
+# Default severity for all analyzer diagnostics
+dotnet_analyzer_diagnostic.severity = none

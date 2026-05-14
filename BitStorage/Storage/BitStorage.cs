@@ -3,9 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Contracts;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Xml.Linq;
 
 namespace GgoSoft.Storage
 {
@@ -14,94 +15,15 @@ namespace GgoSoft.Storage
 	/// The BitStorage class provides functionality for reading and writing bits to a storage of bytes.
 	/// It maintains indices for reading and writing bits and ensures that the storage length is updated accordingly.
 	/// </summary>
-	public class BitStorage
+	public sealed class BitStorage : IDisposable
 	{
-		/// <summary>
-		/// Represents an internal, mutable collection of bytes that supports indexed access, range operations, and
-		/// enumeration.  The collection makes sure that indices are within valid bounds.  
-		/// </summary>
-		/// <remarks>This class is intended for internal use and provides methods for manipulating and accessing a
-		/// sequence of bytes. It implements <see cref="IEnumerable{Byte}"/> to allow iteration over the contained bytes. The
-		/// collection supports dynamic resizing and provides methods for efficient access to ranges and spans of
-		/// data.</remarks>
-		internal sealed class InternalData : IEnumerable<byte>
-		{
-			private List<byte> Data { get; } = new();
-			internal byte this[Index index]
-			{
-				get
-				{
-					int actualIndex = GetActualIndex(index);
-					return Data[actualIndex];
-				}
-				set
-				{
-					int actualIndex = GetActualIndex(index);
-					Data[actualIndex] = value;
-				}
-			}
-			private int GetActualIndex(Index index)
-			{
-				int start = index.GetOffset(Data.Count);
-				if (start < 0 || start >= Data.Count)
-				{
-					throw new ArgumentOutOfRangeException(nameof(index), $"Cannot get index {index} from storage of length {Data.Count}");
-				}
-				return start;
-			}
+		internal readonly struct ReaderTag{}
 
-			internal List<byte> GetRange(int start, int totalBytes)
-			{
-				if(start < 0 || totalBytes < 0 || start + totalBytes > Data.Count)
-				{
-					throw new ArgumentOutOfRangeException(nameof(start), $"Cannot get range {start} to {start + totalBytes - 1} from storage of length {Data.Count}");
-				}
-				return Data.GetRange(start, totalBytes);
-			}
-			internal int Count => Data.Count;
-			internal void Clear() => Data.Clear();
-			internal Span<byte> AsSpan()
-			{
-				return CollectionsMarshal.AsSpan(Data);
-			}
+		// The only allowed instance
+		internal static readonly ReaderTag ForStreamReadersOnly = new ReaderTag();
 
-			// Helper method to ensure the capacity of the data list is at least byteIndex + 1
-			internal void EnsureCapacity(int byteIndex)
-			{
-				if (byteIndex < 0) throw new ArgumentOutOfRangeException(nameof(byteIndex));
-				if (byteIndex < Data.Count) return;
-				// EnsureCapacity exists on List<T> (.NET Core/.NET 5+)
-				int needed = byteIndex + 1;
-				if (Data.Capacity < needed)
-				{
-					int newCap = Math.Max(Data.Capacity == 0 ? 4 : Data.Capacity * 2, needed);
-					Data.Capacity = newCap;
-				}
-				// add the missing bytes in one allocation
-				int toAdd = needed - Data.Count;
-				if (toAdd > 0)
-				{
-					Data.AddRange(Enumerable.Repeat((byte)0, toAdd));
-				}
-			}
-			public IEnumerator<byte> GetEnumerator()
-			{
-				return ((IEnumerable<byte>)Data).GetEnumerator();
-			}
-
-			IEnumerator IEnumerable.GetEnumerator()
-			{
-				return ((IEnumerable)Data).GetEnumerator();
-			}
-			internal InternalData Clone()
-			{
-				var copy = new InternalData();
-				copy.Data.AddRange(this.Data);
-				return copy;
-			}
-		}
 		// This holds all the data types allowed and the size of them in bits
-		internal static int GetTypeWidth<T>() => GetTypeWidth<T>();
+		internal static int GetTypeWidth<T>() => GetTypeWidth(typeof(T));
 		internal static int GetTypeWidth(Type T) => T switch
 		{
 			Type _ when T == typeof(int) => 32,
@@ -116,28 +38,41 @@ namespace GgoSoft.Storage
 			_ => throw new NotSupportedException($"Type {T} is not supported")
 		};
 
-		//// Index of the bit within the current byte being written to. This will go down as each bit is written and
-		//// will reset to the last bit of the next storage element if the write index is less than 0
+		// Index of the bit within the current byte being written to. This will go down as each bit is written and
+		// will reset to the last bit of the next storage element if the write index is less than 0
 		private int _writeBitIndex = StorageElementLength - 1;
 		// Index of the byte currently being written to
 		private int _writeByteIndex;
 		// List of bytes to store the bits
-		internal InternalData data = new();
+		internal IByteStore _store;
+		internal static readonly ulong[] Masks = Enumerable.Range(0, 65)
+			.Select(i => i == 64 ? ulong.MaxValue : ((1UL << i) - 1))
+			.ToArray();
 
 		/// <summary>
 		/// Initializes a new instance of the BitStorage class with an empty storage.
 		/// </summary>
 		public BitStorage()
 		{
+			_store = new MemoryByteStore();
 		}
 
 		/// <summary>
 		/// Makes a copy of the specified BitStorage instance.
 		/// </summary>
 		/// <param name="bits">The initial data to store</param>
-		public BitStorage(BitStorage bits)
+		public BitStorage(BitStorage bits) : this()
 		{
 			this.Write(bits);
+		}
+
+		public BitStorage(Stream stream, int BufferSize = 4096)
+		{
+			_store = new StreamWriterByteStore(stream, BufferSize);
+		}
+		private BitStorage(Stream stream, ReaderTag _, int bufferSize)
+		{
+			_store = new StreamReaderByteStore(stream, bufferSize);
 		}
 
 		/// <summary>
@@ -156,14 +91,30 @@ namespace GgoSoft.Storage
 			newStorage.Write(bits, bitsToWrite, elementBitsToWrite);
 			return newStorage;
 		}
-
+		public static BitStorageReader CreateStreamReader(Stream stream, int bitCount, int bufferSize=4096)
+		{
+			if(bitCount < 0)
+			{
+				throw new ArgumentOutOfRangeException(nameof(bitCount), "Value must be non-negative");
+			}
+			BitStorage newStorage = new(stream, ForStreamReadersOnly, bufferSize);
+			newStorage.Count = bitCount;
+			return newStorage.CreateReader();
+		}
 		/// <summary>
 		/// Creates a <see cref="BitStorageReader"/> instance that provides read-only access to the underlying bit storage data.
 		/// </summary>
 		/// <returns>
 		/// A new <see cref="BitStorageReader"/> instance bound to this <see cref="BitStorage"/>.
 		/// </returns>
-		public BitStorageReader CreateReader() => new (this);
+		public BitStorageReader CreateReader()
+		{
+			if(_store.IsWriteOnly)
+			{
+				throw new NotSupportedException("Readers cannot be created for write only BitStorage");
+			}
+			return new(this);
+		}
 
 		/// <summary>
 		/// Creates a typed <see cref="BitStorageValueReader{T}"/> using the specified bit width.
@@ -187,7 +138,11 @@ namespace GgoSoft.Storage
 		/// </remarks>
 		public BitStorageValueReader<T> CreateValueReader<T>(int bitsPerValue, bool signed = false) where T : struct
 		{
-			return new BitStorageValueReader<T>(CreateReader(), bitsPerValue, signed);
+			if (_store.IsWriteOnly)
+			{
+				throw new NotSupportedException("Readers cannot be created for write only BitStorage");
+			}
+			return new(CreateReader(), bitsPerValue, signed);
 		}
 
 		/// <summary>
@@ -283,34 +238,34 @@ namespace GgoSoft.Storage
 		}
 
 		// Helper method to get a mask length bits long, up to 64.  E.g. length = 6, this returns 0b111111
-		internal static ulong GetMask(int length)
-		{
-			ulong returnResult = 0;
-			if (length < 0 || length > 64)
-			{
-				throw new ArgumentOutOfRangeException(nameof(length), "Value must be between 0 and 64.");
-			}
-			if (length == 64)
-			{
-				returnResult = ulong.MaxValue;
-			}
-			else if (length != 0)
-			{
-				returnResult = (1UL << length) - 1;
-			}
-			return returnResult;
-		}
+		//internal static ulong GetMask(int length)
+		//{
+		//	ulong returnResult = 0;
+		//	if (length < 0 || length > 64)
+		//	{
+		//		throw new ArgumentOutOfRangeException(nameof(length), "Value must be between 0 and 64.");
+		//	}
+		//	if (length == 64)
+		//	{
+		//		returnResult = ulong.MaxValue;
+		//	}
+		//	else if (length != 0)
+		//	{
+		//		returnResult = (1UL << length) - 1;
+		//	}
+		//	return returnResult;
+		//}
 
 		// Helper method to write a bool bit at a specific index
 		private void WriteBit(bool bit, int mask, int byteIndex)
 		{
 			if (bit)
 			{
-				data[byteIndex] |= (byte)mask;
+				_store[byteIndex] |= (byte)mask;
 			}
 			else
 			{
-				data[byteIndex] &= (byte)~mask;
+				_store[byteIndex] &= (byte)~mask;
 			}
 		}
 
@@ -363,7 +318,7 @@ namespace GgoSoft.Storage
 		/// </summary>
 		public void Clear()
 		{
-			data.Clear();
+			_store.Clear();
 			WriteBitIndex = StorageElementLength - 1;
 			WriteByteIndex = 0;
 			Count = 0;
@@ -387,13 +342,13 @@ namespace GgoSoft.Storage
 			var lastUnusedBits = (StorageElementLength - Count % StorageElementLength) % StorageElementLength;
 
 			// Create a new List<byte> with the relevant data.
-			var newData = data.GetRange(0, totalBytes);
+			var newData = _store.GetRange(0, totalBytes);
 
 			// If there are unused bits to mask off (i.e., not a full byte)
 			if (lastUnusedBits > 0)
 			{
 				// Calculate the mask for the used bits
-				var usedBitsMask = (byte)~GetMask(lastUnusedBits);
+				var usedBitsMask = (byte)~Masks[lastUnusedBits];
 
 				// Mask off the unused bits from the last element
 				newData[^1] &= usedBitsMask;
@@ -408,28 +363,52 @@ namespace GgoSoft.Storage
 		/// <param name="bits">The BitStorage instance containing the bits to write.</param>
 		public BitStorage Write(BitStorage bits)
 		{
-			int extraBits = bits.Count % StorageElementLength;
-			// don't do anything if the data is empty
-			if (bits.data.Count > 0)
+			var bytes = bits.GetData();
+			int bitCount = bits.Count;
+
+			// Fast path: if aligned, write full bytes
+			if (bitCount % 8 == 0)
 			{
-				// if the number of bits is a multiple of the storage element length, write the whole data
-				if (extraBits == 0)
-				{
-					Write(bits.data);
-				}
-				else
-				{
-					// if the number of bits is not a multiple of the storage element length, write all but
-					// the last element and then write the last element converted to big endian
-					for (int i = 0; i < bits.data.Count - 1; i++)
-					{
-						Write(bits.data[i]);
-					}
-					Write(bits.data[^1] >> (StorageElementLength - extraBits), extraBits);
-				}
+				foreach (var b in bytes)
+					Write(b);
 			}
+			else
+			{
+				// Write all full bytes
+				for (int i = 0; i < bytes.Count - 1; i++)
+					Write(bytes[i]);
+
+				// Write the final partial byte
+				int extraBits = bitCount % 8;
+				Write(bytes[^1] >> (StorageElementLength - extraBits), extraBits);
+			}
+
 			return this;
 		}
+		//public BitStorage Write(BitStorage bits)
+		//{
+		//	int extraBits = bits.Count % StorageElementLength;
+		//	// don't do anything if the data is empty
+		//	if (bits.data.Count > 0)
+		//	{
+		//		// if the number of bits is a multiple of the storage element length, write the whole data
+		//		if (extraBits == 0)
+		//		{
+		//			Write(bits.data);
+		//		}
+		//		else
+		//		{
+		//			// if the number of bits is not a multiple of the storage element length, write all but
+		//			// the last element and then write the last element converted to big endian
+		//			for (int i = 0; i < bits.data.Count - 1; i++)
+		//			{
+		//				Write(bits.data[i]);
+		//			}
+		//			Write(bits.data[^1] >> (StorageElementLength - extraBits), extraBits);
+		//		}
+		//	}
+		//	return this;
+		//}
 
 		/// <summary>
 		/// Writes a single bit to the storage.
@@ -437,7 +416,7 @@ namespace GgoSoft.Storage
 		/// <param name="bit">Bit to be written</param>
 		private void Write(bool bit)
 		{
-			data.EnsureCapacity(WriteByteIndex);
+			_store.EnsureCapacity(WriteByteIndex);
 			var mask = 1 << WriteBitIndex;
 
 			WriteBit(bit, mask, WriteByteIndex);
@@ -617,40 +596,47 @@ namespace GgoSoft.Storage
 			int tempLength = bitsToWrite ?? typeWidth;
 			// The mask is the used to mask off unwanted bits. The mask will be all 1's for the number of bits requested
 			// e.g. if the number of bits requested is 5, the mask will be 0b11111
-			ulong mask = GetMask(tempLength);
+			ulong mask = Masks[tempLength];
 			// tempBits holds the bits to be stored.  The bits will be removed (shifted) as they are written
 			// The bits are converted to a ulong so they can be manipulated easier
 			ulong tempBits = ToUInt64(bits);
 			// This is probably not needed, but mask off the extra bits just in case
 			tempBits &= mask;
+			_store.EnsureCapacity(WriteByteIndex + (tempLength + 7) / 8);
 			// The written bits may not align with the storage element boundaries.  This loop will write the number of bits available in the current
 			// storage element, then write the next bits in the next storage element, etc.  The maximum number of loops should be the number of bits
 			// requested / the number of bits in the storage element + 1. E.g. if the number of bits requested is 27 and the storage element is 8,
 			// the maximum number of loops is 4
 			while (tempLength > 0)
 			{
+				int tempWriteBitIndex = WriteBitIndex;
+				if (tempWriteBitIndex == 7 && tempLength >= 8)
+				{
+					_store[WriteByteIndex++] = (byte)(tempBits >> (tempLength - 8));
+					tempLength -= 8;
+					continue;
+				}
 				// tempWriteLength is the number of bits to write in this loop.  If the number of bits requested is greater than the number of bits
 				// available in the current storage element, set the number of bits to the number of bits available in the current storage element
 				int tempWriteLength = tempLength;
-				if (tempWriteLength > WriteBitIndex)
+				if (tempWriteLength > tempWriteBitIndex)
 				{
-					tempWriteLength = WriteBitIndex + 1;
+					tempWriteLength = tempWriteBitIndex + 1;
 				}
 				// Remove the number of bits written from the number of bits remaining
 				tempLength -= tempWriteLength;
-				// Shift the bits to the write by the remaining number of bits, this will leave the bits to be written in the right-most bits
+				// Shift the bits to the right by the remaining number of bits, this will leave the bits to be written in the right-most bits
 				ulong writeBits = tempBits >> tempLength;
 				// Shift the bits to be written to the left to put them in the appropriate position for the current storage element
-				writeBits <<= (WriteBitIndex + 1 - tempWriteLength);
+				writeBits <<= (tempWriteBitIndex + 1 - tempWriteLength);
 				// make a mask for the bits to be written
-				ulong tempMask = (mask >> tempLength) << (WriteBitIndex + 1 - tempWriteLength);
-				data.EnsureCapacity(WriteByteIndex);
+				ulong tempMask = (mask >> tempLength) << (tempWriteBitIndex + 1 - tempWriteLength);
 				// Set the storage element bits to 0's in the position of the bits to be written
-				data[WriteByteIndex] &= (byte)~tempMask;
+				_store[WriteByteIndex] &= (byte)~tempMask;
 				// Add the bits to be written to the storage element
-				data[WriteByteIndex] += (byte)writeBits;
+				_store[WriteByteIndex] |= (byte)writeBits;
 				// Update the WriteBitIndex
-				WriteBitIndex -= tempWriteLength;
+				WriteBitIndex = tempWriteBitIndex - tempWriteLength;
 			}
 			return this;
 		}
@@ -711,7 +697,7 @@ namespace GgoSoft.Storage
 			}
 			var bitStorage = InsertAsCopy(index, bits);
 			var currentWriteIndex = WriteIndex;
-			this.data = bitStorage.data.Clone();
+			this._store = bitStorage._store.Clone();
 			Count = bitStorage.Count;
 			if (currentWriteIndex >= index)
 			{
@@ -826,7 +812,7 @@ namespace GgoSoft.Storage
 		{
 			var bitStorage = RemoveRangeAsCopy(index, count);
 			var currentWriteIndex = WriteIndex;
-			this.data = bitStorage.data.Clone();
+			this._store = bitStorage._store.Clone();
 			Count = bitStorage.Count;
 			if (currentWriteIndex >= index)
 			{
@@ -941,12 +927,12 @@ namespace GgoSoft.Storage
 			System.Text.StringBuilder footer = new();
 			for (int i = byteStart; i < byteEnd; i++)
 			{
-				var padded = Convert.ToString(data[i], 2).PadLeft(StorageElementLength, '0');
+				var padded = Convert.ToString(_store[i], 2).PadLeft(StorageElementLength, '0');
 				var extraBits = Count % StorageElementLength;
-				var elementData = data[i];
+				var elementData = _store[i];
 				if (i == byteEnd - 1 && extraBits > 0)
 				{
-					var mask = (byte)(GetMask(8) & ~GetMask(StorageElementLength - extraBits));
+					var mask = (byte)(Masks[8] & ~Masks[StorageElementLength - extraBits]);
 					elementData &= mask;
 					extraBits = StorageElementLength - extraBits;
 					padded = $"{padded[..^extraBits]}{new string('.', extraBits)}";
@@ -988,13 +974,13 @@ namespace GgoSoft.Storage
 			int fullElements = Count / StorageElementLength;
 			int remainingBits = Count % StorageElementLength;
 
-			var originalDataSpan = data.AsSpan();
-			var otherDataSpan = other.data.AsSpan();
+			var originalDataSpan = _store.AsSpan();
+			var otherDataSpan = other._store.AsSpan();
 			int totalElements = remainingBits == 0 ? fullElements : fullElements + 1;
 			
 
 			// If the last storage element is the same, we can check all of the data
-			if (other.data[totalElements - 1] == data[totalElements - 1])
+			if (other._store[totalElements - 1] == _store[totalElements - 1])
 			{
 				return originalDataSpan[0..totalElements].SequenceEqual(otherDataSpan[0..totalElements]);
 			}
@@ -1006,7 +992,7 @@ namespace GgoSoft.Storage
 			}
 
 			// The last storage element isn't the same, but it may be that the bits that are part of the data are the same
-			if (data[fullElements] >> (StorageElementLength - remainingBits) != (other.data[fullElements] >> (StorageElementLength - remainingBits)))
+			if (_store[fullElements] >> (StorageElementLength - remainingBits) != (other._store[fullElements] >> (StorageElementLength - remainingBits)))
 			{
 				return false;
 			}
@@ -1030,6 +1016,14 @@ namespace GgoSoft.Storage
 			if (typeof(T) == typeof(long))   return (ulong)(long)(object)value;
 
 			throw new NotSupportedException($"Type {typeof(T)} is not supported.");
+		}
+		public void Dispose()
+		{
+			_store.Dispose();
+		}
+		public void Flush()
+		{
+			_store.Flush();
 		}
 	}
 }

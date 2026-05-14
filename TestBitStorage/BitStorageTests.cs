@@ -1366,7 +1366,7 @@ namespace TestBitStorage
 			var s2 = new BitStorage(s1);
 
 			// access private 'data' (InternalData) and its Data list
-			var dataField = typeof(BitStorage).GetField("data", BindingFlags.NonPublic | BindingFlags.Instance);
+			var dataField = typeof(BitStorage).GetField("_store", BindingFlags.NonPublic | BindingFlags.Instance);
 			Assert.NotNull(dataField);
 			var internal1 = dataField.GetValue(s1);
 			var internal2 = dataField.GetValue(s2);
