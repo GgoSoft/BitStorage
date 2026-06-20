@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <!-- Keep the standard public feed active -->
+    <add key="nuget.org" value="https://nuget.org" protocol="version=3" />
+
+    <!-- Tell NuGet to look inside your analyzer's output folder -->
+    <!-- Replace the path below with the actual path to your analyzer's bin\Debug directory -->
+    <add key="LocalAnalyzers" value="..\Analyzers\bin\Debug" />
+  </packageSources>
+</configuration>

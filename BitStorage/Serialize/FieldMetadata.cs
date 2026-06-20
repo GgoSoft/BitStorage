@@ -30,25 +30,47 @@ namespace GgoSoft.Serialize
 		/// null.</remarks>
 		public required BitFieldAttribute Attribute { get; init; }
 
-		public TypeResolution TypeResolution { get; set; }
-		public Type FieldType
+		private TypeResolution[] _typeResolution = [];
+		public required TypeResolution[] TypeResolution
 		{
 			get
 			{
-				return TypeResolution.FieldType ?? throw new SerializationException($"Field '{Name}': Cannot resolve type to valid data type");
+				return _typeResolution;
+			}
+			set
+			{
+				if(value.Length == 0)
+				{
+					throw new SerializationException($"Field '{Name}': cannot resolve underlying type");
+				}
+				_typeResolution = value;
+				UnderlyingType = value[^1];
+				//ResolvedSigned = UnderlyingType.Signed;
+				//FieldType = UnderlyingType.FieldType;
 			}
 		}
+		//public required LevelTypeResolution[] LevelTypes { get; set; }
+		public TypeResolution UnderlyingType { get; private set; } = new() { FieldType=typeof(int)};// => TypeResolution.Length > 0 ? TypeResolution[^1] : throw new SerializationException($"Field '{Name}': cannot resolve underlying type");
+		//public Type FieldType { get; private set; }
+		//{
+		//	get
+		//	{
+		//		return UnderlyingType.FieldType ?? throw new SerializationException($"Field '{Name}': Cannot resolve type to valid data type");
+		//	}
+		//}
 		public bool IsCustomSerializer { get; set; }
 
 		// resolved values (what runtime actually uses)
 		public int ResolvedOrder { get; set; }                 // computed once
 		public int ResolvedBits { get; set; }                 // final bit width (element or scalar)
-		public bool ResolvedSigned { get => TypeResolution.Signed; }               // final signedness
-		public BigInteger? ResolvedMin { get; set; }           // normalized bounds
-		public BigInteger? ResolvedMax { get; set; }
+		//public bool ResolvedSigned { get; private set; }               // final signedness
+		public long ResolvedMinSigned { get; set; }           // normalized bounds
+		public long ResolvedMaxSigned { get; set; }
+		public ulong ResolvedMinUnsigned { get; set; }           // normalized bounds
+		public ulong ResolvedMaxUnsigned { get; set; }
 		public int? ResolvedCountBitLength { get; set; }       // enumerable length encoding
 		public ulong? ResolvedTerminatorValue { get; set; }    // element terminator (if any)
-
+		public ulong? ResolvedEscapeValue { get; set; }        // element escape value (if any)
 		// converter/Contitional / runtime hooks
 		public Type? ResolvedConverterType { get; set; }       // type to instantiate at runtime
 		public IBitConverter? ResolvedConverterInstance { get; set; } // optional DI-resolved instance
@@ -67,7 +89,7 @@ namespace GgoSoft.Serialize
 		/// </summary>
 		public override string ToString()
 		{
-			return $"{Name} ({Property?.Name}) bits={ResolvedBits} signed={ResolvedSigned} optional={Attribute?.Optional}";
+			return $"{Name} ({Property?.Name}) bits={ResolvedBits} signed={UnderlyingType.Signed} optional={Attribute?.Optional}";
 		}
 
 		/// <summary>

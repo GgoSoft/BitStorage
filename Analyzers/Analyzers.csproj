@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsAnalyzer>true</IsAnalyzer>
+    <!--<GeneratePackageOnBuild>true</GeneratePackageOnBuild>-->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Forces NuGet to place the dll in the specific folder Roslyn looks for -->
+    <!--<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);GetPackageContents</TargetsForTfmSpecificContentInPackage>-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.1.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.1.0" />
+  </ItemGroup>
+
+  <!--<Target Name="GetPackageContents">
+    <ItemGroup>
+      <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+  </Target>-->
+
+</Project>

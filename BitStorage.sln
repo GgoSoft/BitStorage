@@ -10,7 +10,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0FACAD29-9DB1-41CD-BC7D-B3BFA51ABD5E}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		nuget.config = nuget.config
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Analyzers", "Analyzers\Analyzers.csproj", "{2107C225-81CB-47C4-A36B-4A825314BCBF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,6 +29,10 @@ Global
 		{75837F98-96A0-4FE1-8419-293EE8AA9376}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{75837F98-96A0-4FE1-8419-293EE8AA9376}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{75837F98-96A0-4FE1-8419-293EE8AA9376}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2107C225-81CB-47C4-A36B-4A825314BCBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2107C225-81CB-47C4-A36B-4A825314BCBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2107C225-81CB-47C4-A36B-4A825314BCBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2107C225-81CB-47C4-A36B-4A825314BCBF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

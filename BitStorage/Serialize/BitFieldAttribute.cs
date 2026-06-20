@@ -29,7 +29,7 @@
 	And the field is nullable → throw.
 	Because the serializer cannot guess how null should be represented.
 
-bool? Optional = null
+bool? Optional = null // 
 object? DefaultIfNull = null
 string? ConditionalProperty = null
 string? ConditionalType = null
@@ -38,6 +38,7 @@ object? OmitIfEquals = null
 string? ElementOptional = null
 string? ElementConditionalProperty = null
 string? ElementConditionalType = null
+bool? ElementIgnoreIfNull = null
 
 Bits
 Signed
@@ -266,6 +267,75 @@ consuming it, allowing the condition method to make a decision based on the next
 
 namespace GgoSoft.Serialize
 {
+	[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
+	public class BitFieldLevelAttribute : Attribute
+	{
+		public int Depth { get; set; }
+		public bool HasDepth { get; internal set; } = false; // this is needed to distinguish between explicitly set Depth=0 and default Depth=0 for positional levels
+		public bool Optional { get; set; }
+		public bool HasOptional { get; internal set; } = false; // this is needed to distinguish between explicitly set Optional=false and default Optional=false
+
+		public object? OmitIfEqual { get; set; }
+		public bool HasOmitIfEqual { get; internal set; } = false; // this is needed to distinguish between explicitly set OmitIfEqual=null and default OmitIfEqual=null
+		//When true, if the field value is null, it will be omitted from serialization. This is useful for reference types or nullable value types where a null value indicates the absence of data.
+		//If "Optional" is also true, the presence bit will indicate whether the field is included or not, regardless of whether it's null or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
+		//public bool IgnoreIfNull { get; set; }
+		public bool HasIgnoreIfNull { get; internal set; } = false;
+
+		//When serializing enumerables, the number of bits used to encode the element count
+		//Can only be used with enumerations
+		//Cannot be used with TerminatorValue, as they serve different purposes.
+		public int CountBitLength { get; set; }
+		public bool HasCountBitLength { get; internal set; } = false;
+
+		//Optional name of another property on the parent object used to store the element count for enumerables.
+		//If specified, this property will be used to read/write the count of elements in the enumerable instead of using a fixed bit length defined by CountBitLength. This allows for more flexible serialization of collections where the count may not fit within a predetermined number of bits.
+		//Evaluates strictly on the current context class containing the collection field declaration; it will not look inside target complex elements.
+		public string? CountField { get; set; }
+		public bool HasCountField { get; internal set; } = false;
+
+		//When serializing enumerables with a terminator, the terminator element value (encoded using the element width).
+		//Can only be used with enumerations
+		//Cannot be used with CountBitLength, as they serve different purposes.
+		//public object? TerminatorValue { get; set; }
+		//public bool HasTerminatorValue { get; internal set; } = false;
+
+		/// <summary>
+		/// When serializing enumerables with a terminator, if the value of the current element equals the specified terminator value, 
+		/// the EscapeValue will be serialized first, then the terminator value will be written.  This allows for escaping of the terminator 
+		/// value in the data. For example, if the terminator value is 0 and the EscapeValue is 1, then whenever an element with value 0 is 
+		/// encountered, a 1 will be written followed by the 0. The deserializer can then recognize that the 0 is an escaped value rather 
+		/// than a terminator. This is useful for cases where the data may contain values that are the same as the terminator, allowing 
+		/// them to be included in the serialized output without prematurely ending the enumeration.
+		/// If the current element equals the escape value, the same thing will happen.  This allows for the escape value itself to be 
+		/// included in the data without ambiguity.  If the EscapeValue is not set and the current element equals the TerminatorValue, it 
+		/// will throw an exception.
+		/// </summary>
+		//public object? EscapeValue { get; set; }
+		//public bool HasEscapeValue { get; internal set; } = false;
+
+		//Optional name of another property on the same object used for simple conditional inclusion.
+		//If this property is null, false, or empty, the current field will be excluded.
+		//If the property is excluded in serialization, it also must be excluded in deserialization.
+		//If the "Optional" property is used, the serializer will write a presence bit before the field, indicating whether the field is included or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
+		public string? ConditionalProperty { get; set; }
+		public bool HasConditionalProperty { get; internal set; } = false;
+
+		//Condition type implementing IFieldCondition
+		//Field will be written based on IFieldCondition.Evaluate
+		//Can be direct injected into the serializer, so can have constructor parameters for configuration
+		//Can also be instantiated with Activator.CreateInstance, so must have a public parameterless constructor
+		//May be reused across multiple fields, so should be designed to be reusable and stateless if possible
+		//If the property is excluded in serialization, it also must be excluded in deserialization.
+		//If the "Optional" property is used, the serializer will write a presence bit before the field, indicating whether the field is included or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
+		public Type? ConditionalType { get; set; }
+		public bool HasConditionalType { get; internal set; } = false;
+
+		public string? ConditionalMethod { get; set; }
+		public bool HasConditionalMethod { get; internal set; } = false;
+
+		public BitFieldLevelAttribute() { }
+	}
 
 	/// <summary>
 	/// Marks a property as a bit-field for the serializer and provides schema hints.
@@ -281,45 +351,51 @@ namespace GgoSoft.Serialize
 		/// Value must be between 1 and the number of bits appropriate for the field.  
 		/// If field is enumerable, this applies to the element width.		
 		/// </summary>
-		public int Bits { get => BitsNullable ?? default; set { BitsNullable = value; } }
-		public int? BitsNullable { get; private set; } = null;
+		public int Bits { get; set; }
+		public bool HasBits { get; internal set; }
+//		public int? BitsNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Interpret the stored bits as a signed two's complement value when reading.  This is
 		/// required if <see cref="Bits"/> (or the inferred number of bits) is less than the native 
 		/// width of the property type and you want to support negative values.
 		/// </summary>
-		public bool Signed { get => SignedNullable ?? default; set { SignedNullable = value; } }
-		public bool? SignedNullable { get; private set; } = null;
+		public bool Signed { get; set; }
+		public bool HasSigned { get; internal set; }
+		//public bool? SignedNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Optional signed minimum bound for the field. Use only for signed semantics
 		/// or when you want to express a signed lower bound. Mutually exclusive with <see cref="UnsignedMin"/>.
 		/// </summary>
-		public long Min { get => MinNullable ?? default; set { MinNullable = value; } }
-		public long? MinNullable { get; private set; } = null;
+		public long Min { get; set; }
+		public bool HasMin { get; internal set; }
+		//public long? MinNullable { get; private set; } = null;
 
 
 		/// <summary>
 		/// Optional signed maximum bound for the field. Use only for signed semantics
 		/// or when you want to express a signed upper bound. Mutually exclusive with <see cref="UnsignedMax"/>.
 		/// </summary>
-		public long Max { get => MaxNullable ?? default; set { MaxNullable = value; } }
-		public long? MaxNullable { get; private set; } = null;
+		public long Max { get; set; }
+		public bool HasMax { get; internal set; }
+		//public long? MaxNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Optional unsigned minimum bound for the field. Use this to express bounds
 		/// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Min"/>.
 		/// </summary>
-		public ulong UnsignedMin { get => UnsignedMinNullable ?? default; set { UnsignedMinNullable = value; } }
-		public ulong? UnsignedMinNullable { get; private set; } = null;
+		public ulong UnsignedMin { get; set; }
+		public bool HasUnsignedMin { get; internal set; }
+		//public ulong? UnsignedMinNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Optional unsigned maximum bound for the field. Use this to express bounds
 		/// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Max"/>.
 		/// </summary>
-		public ulong UnsignedMax { get => UnsignedMaxNullable ?? default; set { UnsignedMaxNullable = value; } }
-		public ulong? UnsignedMaxNullable { get; private set; } = null;
+		public ulong UnsignedMax { get; set; }
+		public bool HasUnsignedMax { get; internal set; }
+		//public ulong? UnsignedMaxNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Per-field opt-in for bit-width inference.
@@ -332,23 +408,30 @@ namespace GgoSoft.Serialize
 		/// </list>
 		/// Default is <c>false</c>.
 		/// </summary>
-		public bool InferBits { get => InferBitsNullable ?? default; set { InferBitsNullable = value; } }
-		public bool? InferBitsNullable { get; private set; } = null;
+		public bool InferBits { get; set; }
+		public bool HasInferBits { get; internal set; }
+		//public bool? InferBitsNullable { get; private set; } = null;
 
 		/// <summary>
 		/// When serializing enumerables, the number of bits used to encode the element count.
 		/// Provide exactly one of <see cref="CountBitLength"/> or <see cref="TerminatorValue"/> for enumerable fields.
 		/// Valid range: 1..32.
 		/// </summary>
-		public int CountBitLength { get => CountBitLengthNullable ?? default; set { CountBitLengthNullable = value; } }
-		public int? CountBitLengthNullable { get; private set; } = null;
+		public int CountBitLength { get; set; }
+		public bool HasCountBitLength { get; internal set; }
+		//public int? CountBitLengthNullable { get; private set; } = null;
 
 		/// <summary>
 		/// When serializing enumerables with a terminator, the terminator element value (encoded using the element width).
 		/// Provide exactly one of <see cref="CountBitLength"/> or <see cref="TerminatorValue"/>.
 		/// </summary>
-		public ulong TerminatorValue { get => TerminatorValueNullable ?? default; set { TerminatorValueNullable = value; } }
-		public ulong? TerminatorValueNullable { get; private set; } = null;
+		public ulong TerminatorValue { get; set; }
+		public bool HasTerminatorValue { get; internal set; }
+
+		public ulong EscapeValue { get; set; }
+		public bool HasEscapeValue { get; internal set; } = false;
+
+		//public ulong? TerminatorValueNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Optional name of another property on the same object used for simple conditional inclusion.
@@ -409,7 +492,7 @@ namespace GgoSoft.Serialize
 		/// When true, the field is considered optional (presence may be encoded separately).
 		/// Semantics are implementation-defined; the serializer may pack presence bits when configured.
 		/// </summary>
-		internal bool Optional { get; set; } = false; // TODO: make this work, OmitIfEquals must be set for this to work
+		public bool Optional { get; set; } = false; // TODO: make this work, OmitIfEquals must be set for this to work
 
 		/// <summary>
 		/// Default value for the field used during deserialization when the field is omitted.
@@ -421,8 +504,9 @@ namespace GgoSoft.Serialize
 		/// Optional ordering hint for fields. When not set, the builder uses the property's metadata token.
 		/// Lower values are serialized earlier.
 		/// </summary>
-		public int Order { get => OrderNullable ?? default;  set { OrderNullable = value; } }
-		public int? OrderNullable { get; private set; } = null;
+		public int Order { get; set; }
+		public bool HasOrder { get; internal set; }
+		//public int? OrderNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Human-readable description for the field. Useful for generated documentation or diagnostics.
@@ -433,13 +517,17 @@ namespace GgoSoft.Serialize
 		/// When true, the builder may use non-public accessors for this property.
 		/// Default: false.
 		/// </summary>
-		public bool AllowNonPublicAccess { get => AllowNonPublicAccessNullable ?? false; set { AllowNonPublicAccessNullable = value; } }
-		public bool? AllowNonPublicAccessNullable { get; private set; } = null;
+		public bool AllowNonPublicAccess { get; set; } = false;
+		public bool HasAllowNonPublicAccess { get; internal set; }
+		//public bool? AllowNonPublicAccessNullable { get; private set; } = null;
 
 		/// <summary>
 		/// Optional name of another property on the same object that holds the count of elements for an enumerable field.
 		/// </summary>
-		public string? EnumerableCountField { get; set; } // TODO: this is currently ignored
+		//public string? EnumerableCountField { get; set; } // TODO: this is currently ignored
+		//public string? ElementOptional { get; set; }
+		//public string? ElementConditionalProperty { get; set; }
+		//public string? ElementConditionalType { get; set; }
 	}
 	//// -------------------------
 	//// Placeholder bit storage types
