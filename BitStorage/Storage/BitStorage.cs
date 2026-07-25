@@ -600,6 +600,7 @@ namespace GgoSoft.Storage
 			// tempBits holds the bits to be stored.  The bits will be removed (shifted) as they are written
 			// The bits are converted to a ulong so they can be manipulated easier
 			ulong tempBits = ToUInt64(bits);
+			Console.WriteLine($"W: b:{Convert.ToString((long)tempBits, 2).PadLeft(tempLength, '0')[^tempLength..]}, U:{tempBits}, S:{(long)tempBits}, C:{(char)tempBits}");
 			// This is probably not needed, but mask off the extra bits just in case
 			tempBits &= mask;
 			_store.EnsureCapacity(WriteByteIndex + (tempLength + 7) / 8);

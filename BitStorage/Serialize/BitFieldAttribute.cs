@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 
 // TODO:
 /*
@@ -291,9 +292,10 @@ namespace GgoSoft.Serialize
 		//Optional name of another property on the parent object used to store the element count for enumerables.
 		//If specified, this property will be used to read/write the count of elements in the enumerable instead of using a fixed bit length defined by CountBitLength. This allows for more flexible serialization of collections where the count may not fit within a predetermined number of bits.
 		//Evaluates strictly on the current context class containing the collection field declaration; it will not look inside target complex elements.
-		public string? CountField { get; set; }
-		public bool HasCountField { get; internal set; } = false;
+		public string? CountProperty { get; set; }
+		public bool HasCountProperty { get; internal set; } = false;
 
+		public string? HasMoreItemsMethod { get; internal set; }
 		//When serializing enumerables with a terminator, the terminator element value (encoded using the element width).
 		//Can only be used with enumerations
 		//Cannot be used with CountBitLength, as they serve different purposes.
@@ -336,14 +338,84 @@ namespace GgoSoft.Serialize
 
 		public BitFieldLevelAttribute() { }
 	}
+	public interface IBitFieldBounds
+	{
+		bool HasMin { get; }
+		bool HasMax { get; }
+		bool HasTerminator { get; }
+		bool HasEscape { get; }
+		bool IsSigned { get; }
+		long SignedMin{ get; }
+		long SignedMax { get; }
+		ulong UnsignedMin { get; }
+		ulong UnsignedMax { get; }
+		//long SignedTerminator { get; }
+		ulong UnsignedTerminator { get; }
+		//long SignedEscape { get; }
+		ulong UnsignedEscape { get; }
+	}
+	public class EmptyBitFieldBounds : IBitFieldBounds
+	{
+		// A single shared instance to avoid allocating memory repeatedly
+		public static readonly EmptyBitFieldBounds Instance = new();
 
+		private EmptyBitFieldBounds() { } // Prevent external instantiation
+
+		public bool IsSigned => false;
+
+		public bool HasMin => false;
+		public bool HasMax => false;
+		public bool HasTerminator => false;
+		public bool HasEscape => false;
+
+		public long SignedMin => 0;
+		public long SignedMax => 0;
+		public ulong UnsignedMin => 0;
+		public ulong UnsignedMax => 0;
+		//public long SignedTerminator => 0;
+		public ulong UnsignedTerminator => 0;
+		//public long SignedEscape => 0;
+		public ulong UnsignedEscape => 0;
+	}
+
+	[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+	public class BitFieldAttribute<T> : BitFieldAttribute, IBitFieldBounds where T: struct
+	{
+		public BitFieldAttribute()
+		{
+			IsSigned = typeof(T) == typeof(sbyte) || typeof(T) == typeof(short) ||
+				   typeof(T) == typeof(int) || typeof(T) == typeof(long);
+		}
+		private T _min;
+		private T _max;
+		private T _escape;
+		private T _terminator;
+		public bool IsSigned { get; private set; } 
+		public T Min { get => _min; set { _min = value; if (IsSigned) { SignedMin = Convert.ToInt64(value); UnsignedMin = 0; } else { UnsignedMin = Convert.ToUInt64(value);SignedMin = 0; } } }
+		public bool HasMin { get; internal set; }
+		public T Max { get => _max; set { _max = value; if (IsSigned) { SignedMax = Convert.ToInt64(value); UnsignedMax = 0; } else { UnsignedMax = Convert.ToUInt64(value); SignedMax = 0; } } }
+		public bool HasMax { get; internal set; }
+		public T Terminator { get => _terminator; set { _terminator = value; if (IsSigned) { UnsignedTerminator = (ulong)Convert.ToInt64(value);} else { UnsignedTerminator = Convert.ToUInt64(value); } } }
+		public bool HasTerminator { get; internal set; }
+		public T Escape { get => _escape; set { _escape = value; if (IsSigned) { UnsignedEscape = (ulong)Convert.ToInt64(value); } else { UnsignedEscape = Convert.ToUInt64(value); } } }
+		public bool HasEscape { get; internal set; } = false;
+		public long SignedMin { get; private set; }
+		public long SignedMax { get; private set;}
+		public ulong UnsignedMin { get; private set;}
+		public ulong UnsignedMax { get; private set;}
+		//public long SignedTerminator { get; private set;}
+		public ulong UnsignedTerminator { get; private set;}
+		//public long SignedEscape { get; private set;}
+		public ulong UnsignedEscape { get; private set;}
+
+	}
 	/// <summary>
 	/// Marks a property as a bit-field for the serializer and provides schema hints.
 	/// Use this attribute to declare explicit bit widths, signedness, bounds, converters,
 	/// conditional inclusion, enumerable encoding hints, and other per-field metadata.
 	/// </summary>
 	[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
-	public sealed class BitFieldAttribute : Attribute
+	public class BitFieldAttribute : Attribute 
 	{
 		/// <summary>
 		/// Explicit bit width for the field. When set, this value takes highest precedence
@@ -364,37 +436,37 @@ namespace GgoSoft.Serialize
 		public bool HasSigned { get; internal set; }
 		//public bool? SignedNullable { get; private set; } = null;
 
-		/// <summary>
-		/// Optional signed minimum bound for the field. Use only for signed semantics
-		/// or when you want to express a signed lower bound. Mutually exclusive with <see cref="UnsignedMin"/>.
-		/// </summary>
-		public long Min { get; set; }
-		public bool HasMin { get; internal set; }
-		//public long? MinNullable { get; private set; } = null;
+		///// <summary>
+		///// Optional signed minimum bound for the field. Use only for signed semantics
+		///// or when you want to express a signed lower bound. Mutually exclusive with <see cref="UnsignedMin"/>.
+		///// </summary>
+		//public long Min { get; set; }
+		//public bool HasMin { get; internal set; }
+		////public long? MinNullable { get; private set; } = null;
 
 
-		/// <summary>
-		/// Optional signed maximum bound for the field. Use only for signed semantics
-		/// or when you want to express a signed upper bound. Mutually exclusive with <see cref="UnsignedMax"/>.
-		/// </summary>
-		public long Max { get; set; }
-		public bool HasMax { get; internal set; }
+		///// <summary>
+		///// Optional signed maximum bound for the field. Use only for signed semantics
+		///// or when you want to express a signed upper bound. Mutually exclusive with <see cref="UnsignedMax"/>.
+		///// </summary>
+		//public long Max { get; set; }
+		//public bool HasMax { get; internal set; }
 		//public long? MaxNullable { get; private set; } = null;
 
-		/// <summary>
-		/// Optional unsigned minimum bound for the field. Use this to express bounds
-		/// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Min"/>.
-		/// </summary>
-		public ulong UnsignedMin { get; set; }
-		public bool HasUnsignedMin { get; internal set; }
-		//public ulong? UnsignedMinNullable { get; private set; } = null;
+		///// <summary>
+		///// Optional unsigned minimum bound for the field. Use this to express bounds
+		///// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Min"/>.
+		///// </summary>
+		//public ulong UnsignedMin { get; set; }
+		//public bool HasUnsignedMin { get; internal set; }
+		////public ulong? UnsignedMinNullable { get; private set; } = null;
 
-		/// <summary>
-		/// Optional unsigned maximum bound for the field. Use this to express bounds
-		/// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Max"/>.
-		/// </summary>
-		public ulong UnsignedMax { get; set; }
-		public bool HasUnsignedMax { get; internal set; }
+		///// <summary>
+		///// Optional unsigned maximum bound for the field. Use this to express bounds
+		///// in the full 0..2^64-1 range. Mutually exclusive with <see cref="Max"/>.
+		///// </summary>
+		//public ulong UnsignedMax { get; set; }
+		//public bool HasUnsignedMax { get; internal set; }
 		//public ulong? UnsignedMaxNullable { get; private set; } = null;
 
 		/// <summary>
@@ -417,19 +489,21 @@ namespace GgoSoft.Serialize
 		/// Provide exactly one of <see cref="CountBitLength"/> or <see cref="TerminatorValue"/> for enumerable fields.
 		/// Valid range: 1..32.
 		/// </summary>
-		public int CountBitLength { get; set; }
-		public bool HasCountBitLength { get; internal set; }
+		//public int CountBitLength { get; set; }
+		//public bool HasCountBitLength { get; internal set; }
 		//public int? CountBitLengthNullable { get; private set; } = null;
 
+		public int DefaultCountBitLength { get; set; }
+		public bool HasDefaultCountBitLength { get; internal set; }
 		/// <summary>
 		/// When serializing enumerables with a terminator, the terminator element value (encoded using the element width).
 		/// Provide exactly one of <see cref="CountBitLength"/> or <see cref="TerminatorValue"/>.
 		/// </summary>
-		public ulong TerminatorValue { get; set; }
-		public bool HasTerminatorValue { get; internal set; }
+		//public long TerminatorValue { get; set; }
+		//public bool HasTerminatorValue { get; internal set; }
 
-		public ulong EscapeValue { get; set; }
-		public bool HasEscapeValue { get; internal set; } = false;
+		//public ulong EscapeValue { get; set; }
+		//public bool HasEscapeValue { get; internal set; } = false;
 
 		//public ulong? TerminatorValueNullable { get; private set; } = null;
 
@@ -492,7 +566,7 @@ namespace GgoSoft.Serialize
 		/// When true, the field is considered optional (presence may be encoded separately).
 		/// Semantics are implementation-defined; the serializer may pack presence bits when configured.
 		/// </summary>
-		public bool Optional { get; set; } = false; // TODO: make this work, OmitIfEquals must be set for this to work
+		//public bool Optional { get; set; } = false; // TODO: make this work, OmitIfEquals must be set for this to work
 
 		/// <summary>
 		/// Default value for the field used during deserialization when the field is omitted.

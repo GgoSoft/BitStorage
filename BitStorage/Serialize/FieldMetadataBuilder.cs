@@ -12,6 +12,7 @@ using System.Linq.Expressions;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 
 namespace GgoSoft.Serialize
 {
@@ -54,7 +55,7 @@ namespace GgoSoft.Serialize
 			// doing a non-public search.
 #pragma warning disable S3011
 			var props = from p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-						let bitField = MetadataEngine.Hydrate<BitFieldAttribute>(p)
+						let bitField = MetadataEngine.Hydrate(p)
 						let levels = MetadataEngine.HydrateMultiple<BitFieldLevelAttribute>(p)
 						where bitField != null || levels.Any()
 						orderby bitField.HasOrder ? bitField.Order : p.MetadataToken, p.MetadataToken
@@ -93,6 +94,7 @@ namespace GgoSoft.Serialize
 				Name = prop.Name,
 				Property = prop,
 				Attribute = attr,
+				BitFieldBounds = (attr as IBitFieldBounds) ?? EmptyBitFieldBounds.Instance,
 				TypeResolution = ResolveTypeInfo(prop/*.Name, prop.PropertyType*/, attr, levels),
 				ResolvedOrder = attr.HasOrder ? attr.Order : prop.MetadataToken
 				//LevelTypes = [] // TODO: fill this in
@@ -108,10 +110,13 @@ namespace GgoSoft.Serialize
 				metadata.ResolvedConverterType = attr.ConverterType;
 				return metadata;
 			}
-
 			// 2) Parse min/max
 			//var (parsedMin, parsedMax) = ParseBounds(attr, metadata);
 
+			if (metadata.UnderlyingType.CustomBitSerializable is null)
+			{
+				ResolveResolvedBits(metadata);// name, prop, attr, parsedMin, parsedMax, elemType);
+			}
 			// 3) Enumerable-specific rules
 			if (metadata.TypeResolution[0].IsEnumerable)
 			{
@@ -123,7 +128,6 @@ namespace GgoSoft.Serialize
 			}
 
 			// 4) Decide resolvedBits (inference, policy, converters, custom types)
-			ResolveResolvedBits(metadata);// name, prop, attr, parsedMin, parsedMax, elemType);
 
 			// 5) Compute representable ranges and validate provided bounds
 			//var (signedMin, signedMax) = SignedRange(resolvedBits);
@@ -180,30 +184,31 @@ namespace GgoSoft.Serialize
 			void Fail(string msg) => throw new SerializationException($"Field '{metadata.Name}': {msg}");
 
 			var attr = metadata.Attribute ?? throw new InvalidOperationException("missing attribute");
+			var bounds = metadata.BitFieldBounds ?? throw new InvalidOperationException("missing bounds");
 			var prop = metadata.Property ?? throw new InvalidOperationException("missing property");
 			// --- Mutual exclusivity and obvious conflicts ---
 			if (attr.HasBits && attr.InferBits)
 				Fail("Bits cannot be specified when InferBits is true.");
 
-			if (attr.HasCountBitLength && attr.HasTerminatorValue)
-				Fail("for IEnumerable<T> needs to provide exactly one of CountBitLength or TerminatorValue.");
+			//if (attr.HasCountBitLength && attr.HasTerminatorValue)
+			//	Fail("for IEnumerable<T> needs to provide exactly one of CountBitLength or TerminatorValue.");
 
-			if (attr.HasMin && attr.HasUnsignedMin)
-				Fail("Min and UnsignedMin are mutually exclusive.");
+			//if (bounds.HasMin && attr.HasUnsignedMin)
+			//	Fail("Min and UnsignedMin are mutually exclusive.");
 
-			if (attr.HasMax && attr.HasUnsignedMax)
-				Fail("Max and UnsignedMax are mutually exclusive.");
+			//if (attr.HasMax && attr.HasUnsignedMax)
+			//	Fail("Max and UnsignedMax are mutually exclusive.");
 
 			if (metadata.UnderlyingType.Signed)
 			{
-				if (attr.HasUnsignedMin || attr.HasUnsignedMax)
-					Fail("Signed=true cannot be used together with UnsignedMin/UnsignedMax.");
+				//if (attr.HasUnsignedMin || attr.HasUnsignedMax)
+				//	Fail("Signed=true cannot be used together with UnsignedMin/UnsignedMax.");
 
 				if ((metadata.UnderlyingType?.NativeSigned) != true)
 					Fail("Signed=true cannot be used with an unsigned type");
 			} else
 			{
-				if (attr.HasMin && attr.Min < 0)
+				if (bounds.HasMin && bounds.SignedMin < 0)
 					Fail("Signed=false cannot have a negative Min value");
 			}
 
@@ -211,26 +216,26 @@ namespace GgoSoft.Serialize
 			{
 				Fail("Type resolution failed to produce any resolutions.");
 			}
-			if (!metadata.TypeResolution[^1].IsPrimitive)
+			if (!metadata.TypeResolution[^1].IsPrimitive && metadata.TypeResolution[^1].CustomBitSerializable is null)
 			{
 				Fail($"Unsupported type '{metadata.Name}'. Only primitive types and enumerables of primitive types are supported.");
 			}
 			if (!metadata.TypeResolution[0].IsEnumerable)
 			{ 
 				// CountBitLength only makes sense for enumerables
-				if (attr.HasCountBitLength)
-					Fail("CountBitLength is only valid for enumerable fields.");
+				//if (attr.HasCountBitLength)
+				//	Fail("CountBitLength is only valid for enumerable fields.");
 
 				// TerminatorValue only makes sense for enumerables
-				if (attr.HasTerminatorValue)
+				if (bounds.HasTerminator)
 					Fail("TerminatorValue is only valid for enumerable fields.");
 			}
 			// CountBitLength range check (cheap)
-			if (attr.HasCountBitLength && (attr.CountBitLength < 1 || attr.CountBitLength > 32))
-				Fail("CountBitLength must be in range 1..32.");
+			//if (attr.HasCountBitLength && (attr.CountBitLength < 1 || attr.CountBitLength > 32))
+			//	Fail("CountBitLength must be in range 1..32.");
 
 			// Default conflicts with TerminatorValue (collection-level terminator semantics)
-			if (attr.OmitIfEquals != null && attr.HasTerminatorValue)
+			if (attr.OmitIfEquals != null && bounds.HasTerminator)
 				Fail("Default is not allowed when TerminatorValue is used (terminator semantics conflict).");
 
 			// Conditional fields: combine/mode only meaningful when a condition is present
@@ -240,34 +245,34 @@ namespace GgoSoft.Serialize
 
 			// --- Lightweight bounds ordering checks (same-signness only) ---
 			// Only perform simple ordering checks when both bounds are present and of the same signedness.
-			if (attr.HasMax && attr.HasMin && attr.Max < attr.Min)
-				Fail($"Invalid bounds: Max ({attr.Max}) is less than Min ({attr.Min}).");
+			if (bounds.IsSigned && bounds.HasMax && bounds.HasMin && bounds.SignedMax < bounds.SignedMin)
+				Fail($"Invalid bounds: Max ({bounds.SignedMax}) is less than Min ({bounds.SignedMin}).");
 
-			if (attr.HasUnsignedMax && attr.HasUnsignedMin && attr.UnsignedMax < attr.UnsignedMin)
-				Fail($"Invalid bounds: UnsignedMax ({attr.UnsignedMax}) is less than UnsignedMin ({attr.UnsignedMin}).");
+			if (!bounds.IsSigned && bounds.HasMax && bounds.HasMin && bounds.UnsignedMax < bounds.UnsignedMin)
+				Fail($"Invalid bounds: UnsignedMax ({bounds.UnsignedMax}) is less than UnsignedMin ({bounds.UnsignedMin}).");
 
 			// Do not attempt cross-signed comparisons here (e.g., Min vs UnsignedMax) — defer to numeric-resolution pass.
 
 			// TerminatorValue cannot have a value if enumerableElementType is null, no need to check here too
 			// If TerminatorValue is present, ensure it is within a plausible range (cheap check)
 			// We cannot fully validate it without element width; just ensure it's non-negative (terminator is an encoded value).
-			if (attr.HasTerminatorValue && attr.TerminatorValue < 0)
-				Fail("TerminatorValue must be non-negative.");
+			if (!attr.Signed && bounds.HasTerminator && (bounds.UnsignedTerminator < 0))
+				Fail("Signed = false cannot have a negative Terminator");
 
 			// --- Converter/CustomSerializer presence quick checks (no heavy validation) ---
 			// We only flag obviously missing required attributes here; do not attempt to resolve converter-provided widths.
 			if (attr.ConverterType != null || typeof(ICustomBitSerializable).IsAssignableFrom(prop.PropertyType))
 			{
 				// Mark metadata
-				metadata.IsCustomSerializer = true;
+				metadata.IsCustomSerializer = true; // TODO: metadata shouldn't change in validator
 
 				// Disallowed attributes with custom serializer
 				if (attr.HasBits) Fail("Bits cannot be used with a custom serializer.");
 				if (attr.InferBits) Fail("InferBits cannot be used with a custom serializer.");
-				if (attr.HasMin || attr.HasMax || attr.HasUnsignedMin || attr.HasUnsignedMax)
+				if (bounds.HasMin || bounds.HasMax)
 					Fail("Min/Max/UnsignedMin/UnsignedMax cannot be used with a custom serializer.");
-				if (attr.HasCountBitLength || attr.HasTerminatorValue)
-					Fail("CountBitLength and TerminatorValue cannot be used with a custom serializer.");
+				//if (attr.HasCountBitLength || attr.HasTerminatorValue)
+				//	Fail("CountBitLength and TerminatorValue cannot be used with a custom serializer.");
 				// Default allowed only if documented; otherwise reject
 				if (attr.OmitIfEquals != null) Fail("Default is not allowed with a custom serializer unless the serializer documents support.");
 			}
@@ -275,7 +280,7 @@ namespace GgoSoft.Serialize
 			{
 				Fail("Cannot resolve type to valid data type");
 			}
-			else if ((metadata.UnderlyingType?.Width) == null)
+			else if ((metadata.UnderlyingType?.Width) == null && metadata.TypeResolution[^1].CustomBitSerializable is null)
 			{
 				Fail("Typewidth cannot be null");
 			}
@@ -381,9 +386,9 @@ namespace GgoSoft.Serialize
 				IsNullable = isNullable,
 				NativeSigned = nativeSigned,
 				Signed = effectiveSigned,
-				EnumerableElement = null,
+				//EnumerableElement = null,
 				CustomBitSerializable = null,
-				LevelTypeResolution = LevelTypeResolution.Map(level),
+				LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false),
 			};
 		}
 		//public TypeResolution? TryGetPrimitiveWidth(Type fieldType, BitFieldAttribute attr)
@@ -712,7 +717,7 @@ namespace GgoSoft.Serialize
 			if (TryGetEnumerableElementType(type, out Type? elementType))
 			{
 
-				var elementResolution = ResolveTypeInfoCore(
+				_ = ResolveTypeInfoCore(
 					fieldName,
 					elementType,
 					depth + 1,
@@ -727,10 +732,10 @@ namespace GgoSoft.Serialize
 				var returnValue = new TypeResolution
 				{
 					FieldType = type,
-					EnumerableElement = elementResolution,
+					//EnumerableElement = elementResolution,
 					Width = null,
 					IsEnumerable = true,
-					LevelTypeResolution = LevelTypeResolution.Map(level),
+					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, true),
 					IsNullable = isNullable,
 					IsString = type == typeof(string)
 					//EnumerableOptional = level?.HasOptional==true?level.Optional:null,
@@ -743,10 +748,27 @@ namespace GgoSoft.Serialize
 			}
 
 			// Primitive or terminal type
-			var underlyingType = TryGetPrimitiveWidth(fieldName, type, attr, depth, levels);
-			if(underlyingType == null)
+			TypeResolution? underlyingType = null;
+			if(typeof(IBitSerializable).IsAssignableFrom(type))
 			{
-				throw new SerializationException($"Unsupported type '{type.FullName}' at depth {depth} in field '{fieldName}'. Only primitive types and enumerables of primitive types are supported.");
+				underlyingType = new TypeResolution
+				{
+					FieldType = type,
+					Width = null,
+					IsEnumerable = false,
+					IsPrimitive = false,
+					IsNullable = isNullable,
+					CustomBitSerializable = type,
+					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false)
+				};
+			}
+			else
+			{
+				underlyingType = TryGetPrimitiveWidth(fieldName, type, attr, depth, levels);
+				if (underlyingType == null)
+				{
+					throw new SerializationException($"Unsupported type '{type.FullName}' at depth {depth} in field '{fieldName}'. Only primitive types and enumerables of primitive types are supported.");
+				}
 			}
 			typeResolutionResult.Add(underlyingType);
 			return underlyingType;
@@ -849,11 +871,16 @@ namespace GgoSoft.Serialize
 
 		private static void ValidateEnumerableRules(FieldMetadata metadata)//string name, BitFieldAttribute attr, Type? elemType)
 		{
-			if (metadata.Attribute?.HasTerminatorValue ?? false)
+			// TODO: this needs to work
+			if (metadata.BitFieldBounds?.HasTerminator ?? false)
 			{
-				int elementWidth = metadata.ResolvedBits;
-				if (!TerminatorFits(metadata.Attribute.TerminatorValue, elementWidth))
-					throw new SerializationException($"Field '{metadata.Name}': TerminatorValue does not fit in element width {elementWidth}.");
+				//int elementWidth = metadata.ResolvedBits;
+				//var terminatorValue = metadata.BitFieldBounds.Terminator;
+				//if (!TerminatorFits(terminatorValue, elementWidth))
+				//{
+				//	throw new SerializationException($"Field '{metadata.Name}': TerminatorValue does not fit in element width {elementWidth}.");
+				//}
+				//metadata.ResolvedTerminatorValue = terminatorValue;
 			}
 		}
 		private void ResolveResolvedBits(FieldMetadata metadata)
@@ -1159,11 +1186,12 @@ namespace GgoSoft.Serialize
 
 				return finalValue;
 			}
-			var attr = metadata.Attribute;
-			var signedMin = attr.HasMin ? (long?)attr.Min : null;// attr.MinNullable;
-			var unsignedMin = attr.HasUnsignedMin ? (ulong?)attr.UnsignedMin : null;// attr.UnsignedMinNullable;
-			var signedMax = attr.HasMax ? (long?)attr.Max : null;// attr.MaxNullable;
-			var unsignedMax = attr.HasUnsignedMax ? (ulong?)attr.UnsignedMax : null;// attr.UnsignedMaxNullable;
+			//var attr = metadata.Attribute;
+			var bounds = metadata.BitFieldBounds;
+			var signedMin = bounds.HasMin && bounds.IsSigned ? (long?)bounds.SignedMin : null;// attr.MinNullable;
+			var unsignedMin = bounds.HasMin && !bounds.IsSigned ? (ulong?)bounds.UnsignedMin : null;// attr.UnsignedMinNullable;
+			var signedMax = bounds.HasMax && bounds.IsSigned ? (long?)bounds.SignedMax : null;// attr.MaxNullable;
+			var unsignedMax = bounds.HasMax && !bounds.IsSigned ? (ulong?)bounds.UnsignedMax : null;// attr.UnsignedMaxNullable;
 			if (signed)
 			{
 				long nativeMin = -1L << (width - 1);

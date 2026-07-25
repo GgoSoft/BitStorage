@@ -8,13 +8,13 @@ namespace GgoSoft.Serialize
 	public static class MetadataEngine
 	{
 		// 1. For Single Attributes (like [BitField])
-		public static TAttr? Hydrate<TAttr>(PropertyInfo prop) where TAttr : Attribute
+		public static BitFieldAttribute? Hydrate(PropertyInfo prop) 
 		{
-			var attr = prop.GetCustomAttribute<TAttr>();
+			var attr = prop.GetCustomAttribute<BitFieldAttribute>();
 			if (attr == null) return null;
 
 			var data = prop.GetCustomAttributesData()
-						   .FirstOrDefault(d => d.AttributeType == typeof(TAttr));
+						   .FirstOrDefault(d => typeof(BitFieldAttribute).IsAssignableFrom(d.AttributeType));
 
 			if (data != null)
 			{
@@ -44,7 +44,7 @@ namespace GgoSoft.Serialize
 		// Direct flag-flipper on the live attribute instance
 		private static void FlagExplicitArguments<TAttr>(TAttr attr, CustomAttributeData data) where TAttr : Attribute
 		{
-			var type = typeof(TAttr);
+			var type = attr.GetType();// typeof(TAttr);
 
 			foreach (var arg in data.NamedArguments)
 			{
@@ -55,10 +55,10 @@ namespace GgoSoft.Serialize
 	}
 	public record LevelTypeResolution
 	{
-		public int Depth { get; init; }
+		public int? Depth { get; init; }
 		public bool Optional { get; init; }
 		//public bool IgnoreIfNull { get; init; }
-		public int CountBitLength { get; init; }
+		public int? CountBitLength { get; init; }
 		public string? CountField { get; init; }
 		//public object? TerminatorValue { get; init; }
 		//public object? EscapeValue { get; init; }
@@ -68,24 +68,35 @@ namespace GgoSoft.Serialize
 		//public Type? FieldType { get; init; }
 		//public bool IsEnumerable { get; init; }
 		//public bool IsPrimitive { get; init; } 
-		public static LevelTypeResolution? Map(BitFieldLevelAttribute? attr/*, Type? fieldType, bool isEnumerable, bool isPrimitive*/)
+		public static LevelTypeResolution? Map(string fieldName, BitFieldLevelAttribute? levelAttr/*, Type? fieldType, bool isEnumerable, bool isPrimitive*/, BitFieldAttribute attr, bool isEnumerable)
 		{
-			if(attr ==null)
+			int? defaultCountBitLength = attr.HasDefaultCountBitLength ? attr.DefaultCountBitLength : null;
+			int? countBitLength = levelAttr?.HasCountBitLength == true ? levelAttr.CountBitLength : defaultCountBitLength;
+			int? depth = levelAttr?.HasDepth == true ? levelAttr.Depth : null;
+			//if(isEnumerable && countBitLength is null)
+			//{
+			//	throw new SerializationException($"Field: {fieldName} is missing either CountBitLength or DefaultCountBitLength at depth {depth}");
+			//}
+			if(levelAttr ==null)
 			{
-				return null;
+				return new()
+				{
+					Depth = depth,
+					CountBitLength = countBitLength
+				};
 			}
 			return new LevelTypeResolution
 			{
-				Depth = attr.Depth,
-				Optional = attr.Optional,
+				Depth = levelAttr.Depth,
+				Optional = levelAttr.Optional,
 				//IgnoreIfNull = attr.IgnoreIfNull,
-				CountBitLength = attr.CountBitLength,
-				CountField = attr.CountField,
+				CountBitLength = levelAttr.CountBitLength,
+				CountField = levelAttr.CountProperty,
 				//TerminatorValue = attr.TerminatorValue,
 				//EscapeValue = attr.EscapeValue,
-				ConditionalProperty = attr.ConditionalProperty,
-				ConditionalType = attr.ConditionalType,
-				ConditionalMethod = attr.ConditionalMethod
+				ConditionalProperty = levelAttr.ConditionalProperty,
+				ConditionalType = levelAttr.ConditionalType,
+				ConditionalMethod = levelAttr.ConditionalMethod
 				//FieldType = fieldType,
 				//IsEnumerable = isEnumerable,
 				//IsPrimitive = isPrimitive
@@ -131,7 +142,7 @@ namespace GgoSoft.Serialize
 		public bool Signed { get; init;}
 		public Type? CustomBitSerializable { get; init;}
 		public Type? BitSerializable { get; init;}
-		public TypeResolution? EnumerableElement { get; init; }
+		//public TypeResolution? EnumerableElement { get; init; }
 		public LevelTypeResolution? LevelTypeResolution { get; init; }
 
 		//public bool? EnumerableOptional { get; init; }

@@ -377,10 +377,12 @@ namespace GgoSoft.Storage
 				{
 					bitsRead = default;
 					LastReadBitCount = 0;
+					Console.WriteLine($"R: {false}");
 					return 0;
 				}
 				bool returnBool = ReadBool();
 				bitsRead = Unsafe.As<bool, T>(ref returnBool);
+				Console.WriteLine($"R: {returnBool}");
 				return LastReadBitCount;
 			}
 			LastReadBitCount = 0;
@@ -430,6 +432,7 @@ namespace GgoSoft.Storage
 						tempReturnValue = (ulong)DecodeTwosComplement(tempReturnValue, LastReadBitCount);
 
 					bitsRead = FromUInt64<T>(tempReturnValue);
+					Console.WriteLine($"R: B: {Convert.ToString((long)tempReturnValue, 2).PadLeft(returnBits, '0')[^returnBits..]} U: {(ulong)tempReturnValue}, S: {(long)tempReturnValue}, C:{(char)tempReturnValue}");
 					return LastReadBitCount;
 				}
 
@@ -462,6 +465,7 @@ namespace GgoSoft.Storage
 				returnBits = 0;
 			}
 			LastReadBitCount = returnBits;
+			Console.WriteLine($"R: B: {Convert.ToString((long)tempReturnValue, 2).PadLeft(returnBits, '0')[^returnBits..]} U: {(ulong)tempReturnValue}, S: {(long)tempReturnValue}, C:{(char)tempReturnValue}");
 			return returnBits;
 		}
 

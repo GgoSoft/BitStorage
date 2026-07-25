@@ -29,6 +29,7 @@ namespace GgoSoft.Serialize
 		/// <remarks>This property is nullable. If no attribute is provided by the user, the value may be
 		/// null.</remarks>
 		public required BitFieldAttribute Attribute { get; init; }
+		public required IBitFieldBounds BitFieldBounds { get; init; }
 
 		private TypeResolution[] _typeResolution = [];
 		public required TypeResolution[] TypeResolution
@@ -80,7 +81,7 @@ namespace GgoSoft.Serialize
 
 		// runtime hints (only if normalized)
 		public object? ResolvedDefaultValue { get; set; }      // normalized to property type
-		public bool ResolvedOptional { get; set; }             // final presence semantics
+		//public bool ResolvedOptional { get; set; }             // final presence semantics
 
 		// diagnostics
 		public string? ValidationNote { get; set; }
@@ -89,7 +90,7 @@ namespace GgoSoft.Serialize
 		/// </summary>
 		public override string ToString()
 		{
-			return $"{Name} ({Property?.Name}) bits={ResolvedBits} signed={UnderlyingType.Signed} optional={Attribute?.Optional}";
+			return $"{Name} ({Property?.Name}) bits={ResolvedBits} signed={UnderlyingType.Signed}";
 		}
 
 		/// <summary>
