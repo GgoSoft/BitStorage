@@ -1,6 +1,4 @@
-﻿using GgoSoft.Storage;
-using System;
-using System.Reflection;
+﻿using System;
 
 // TODO:
 /*
@@ -274,18 +272,14 @@ namespace GgoSoft.Serialize
 	{
 		public int Depth { get; set; }
 		public bool HasDepth { get; internal set; } = false;
+		public bool Optional { get; set; }
+		public bool HasOptional { get; internal set; } = false;
 
-		// 8/25/26 -- Removing Optional because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
-		//public bool Optional { get; set; }
-		//public bool HasOptional { get; internal set; } = false;
-
-		// 8/25/26 -- Removing OmitIfEqual because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
-		//public object? OmitIfEqual { get; set; }
-		//public bool HasOmitIfEqual { get; internal set; } = false;
+		public object? OmitIfEqual { get; set; }
+		public bool HasOmitIfEqual { get; internal set; } = false;
 
 		//When true, if the field value is null, it will be omitted from serialization. This is useful for reference types or nullable value types where a null value indicates the absence of data.
 		//If "Optional" is also true, the presence bit will indicate whether the field is included or not, regardless of whether it's null or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
-		// 8/25/26 -- Removing IgnoreIfNull because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
 		public bool IgnoreIfNull { get; set; }
 		public bool HasIgnoreIfNull { get; internal set; } = false;
 
@@ -301,31 +295,20 @@ namespace GgoSoft.Serialize
 		//If specified, this property will be used to read/write the count of elements in the enumerable instead of using a fixed bit length defined by CountBitLength. This allows for more flexible serialization of collections where the count may not fit within a predetermined number of bits.
 		//Evaluates strictly on the current context class containing the collection field declaration; it will not look inside target complex elements.
 		public string? CountProperty { get; set; }
-		//public bool HasCountProperty { get; internal set; } = false;
+		public bool HasCountProperty { get; internal set; } = false;
+
+		public string? HasMoreItemsMethod { get; internal set; }
 
 		// public bool ShouldContinue(BitStorageReader reader, PropertyInfo propInfo, int depth, int currentCount)
-		internal Type[] ShouldContinueParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
 		public string? ShouldContinueMethod { get; set; }
-		//public bool HasShouldContinueMethod { get; internal set; }
-
-		internal Type[] ShouldSerializeParameters = [typeof(object), typeof(PropertyInfo), typeof(int), typeof(int)];
-		public string? ShouldSerializeMethod { get; set; }
-		//public bool HasShouldSerializeMethod { get; internal set; }
-
-		internal Type[] ShouldDeserializeParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
-		public string? ShouldDeserializeMethod { get; set; }
-		//public bool HasShouldDeserializeMethod { get; internal set; }
+		public bool HasShouldContinueMethod { get; internal set; }
 
 		//Optional name of another property on the same object used for simple conditional inclusion.
 		//If this property is null, false, or empty, the current field will be excluded.
 		//If the property is excluded in serialization, it also must be excluded in deserialization.
 		//If the "Optional" property is used, the serializer will write a presence bit before the field, indicating whether the field is included or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
-		// 8/25/26 -- Removing ConditionalProperty because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
-		// ConditionalProperty was intended for.  ConditionalProperty is a simple boolean check, but ShouldSerialize and ShouldDeserialize can implement
-		// any logic needed, including checking multiple properties, evaluating complex conditions, or even looking at the current state of the object.
-		// This makes them more powerful and flexible for determining whether a field should be serialized or deserialized.
-		//public string? ConditionalProperty { get; set; }
-		//public bool HasConditionalProperty { get; internal set; } = false;
+		public string? ConditionalProperty { get; set; }
+		public bool HasConditionalProperty { get; internal set; } = false;
 
 		//Condition type implementing IFieldCondition
 		//Field will be written based on IFieldCondition.Evaluate
@@ -334,9 +317,11 @@ namespace GgoSoft.Serialize
 		//May be reused across multiple fields, so should be designed to be reusable and stateless if possible
 		//If the property is excluded in serialization, it also must be excluded in deserialization.
 		//If the "Optional" property is used, the serializer will write a presence bit before the field, indicating whether the field is included or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
-		// 8/25/26 -- Removing ConditionalType for the same reason as ConditionalProperty.
-		//public Type? ConditionalType { get; set; }
-		//public bool HasConditionalType { get; internal set; } = false;
+		public Type? ConditionalType { get; set; }
+		public bool HasConditionalType { get; internal set; } = false;
+
+		public string? ConditionalMethod { get; set; }
+		public bool HasConditionalMethod { get; internal set; } = false;
 
 		public BitFieldLevelAttribute() { }
 	}

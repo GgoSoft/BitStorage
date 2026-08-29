@@ -1,15 +1,18 @@
 ﻿using GgoSoft.Storage;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Numerics;
 using System.Reflection;
+using System.Reflection.PortableExecutable;
 
 namespace GgoSoft.Serialize
 {
+
 	/// <summary>
 	/// High-level entry point for serialization and deserialization operations.
 	/// This static class orchestrates choosing metadata-driven serialization, converters, or
@@ -33,31 +36,38 @@ namespace GgoSoft.Serialize
 			{
 				Console.WriteLine($"Serializing {field.Name}");
 				var valueObject = field.Accessors.Getter(obj);
+				if(!ShouldSerialize(obj, storage, valueObject, field, 0, 0))
+				{
+					Console.WriteLine($"Not serializing due to {field.TypeResolution[0].LevelTypeResolution?.ShouldSerializeMethod}");
+					continue;
+				}
 				if (field.TypeResolution[0].CustomBitSerializable != null)
 				{
-					SerializeCustom(storage, ctx, field, valueObject);
-				}
-				if (field.TypeResolution[0].IsPrimitive)
+					SerializeCustom(storage, ctx, field, valueObject, 0);
+				}else if (field.TypeResolution[0].IsPrimitive)
 				{
-					WritePrimitive(storage, field, valueObject);
+					WritePrimitive(storage, field, valueObject,0);
 				}
 				else if(field.TypeResolution[0].IsEnumerable)
 				{
-					var list = EvaluateEnumerable(field, valueObject, 0, storage, ctx);
-					WriteEnumerable(storage, ctx, field, list, 0);
+					var list = EvaluateEnumerable(obj, field, valueObject, 0, storage, ctx);
+					WriteEnumerable(obj, storage, ctx, field, list, 0);
 				}
 				Console.WriteLine();
 			}
 		}
 
-		private static void SerializeCustom(BitStorage storage, SerializerContext ctx, FieldMetadata field, object? valueObject)
+		private static void SerializeCustom(BitStorage storage, SerializerContext ctx, FieldMetadata field, object? valueObject, int depth)
 		{
-			var openMethod = typeof(Serializer).GetMethod(
-				nameof(SerializeObject),
-				BindingFlags.Public | BindingFlags.Static
-				);
+			//if (!ShouldSerialize(obj, valueObject, field, depth))
+			//{
+			//	Console.WriteLine($"Not serializing due to {field.TypeResolution[depth].LevelTypeResolution?.ShouldSerializeMethod}");
+			//	return;
+			//}
+			var openMethod = typeof(Serializer).GetMethod(nameof(SerializeObject),BindingFlags.Public | BindingFlags.Static) ?? 
+				throw new SerializationException($"Could not find method {typeof(Serializer).FullName}.{nameof(SerializeObject)}");
 			var closedMethod = openMethod.MakeGenericMethod(field.UnderlyingType.FieldType);
-			var obj2 = closedMethod.Invoke(null, [valueObject, storage, ctx]);
+			_ = closedMethod.Invoke(null, [valueObject, storage, ctx]);
 		}
 
 		private static T ReaderHelper<T>(BitStorageReader reader, FieldMetadata field, int depth, int count) where T: struct
@@ -69,17 +79,34 @@ namespace GgoSoft.Serialize
 			}
 			return bitsRead;
 		}
-		private static List<object> ReadEnumerable(BitStorageReader reader, SerializerContext ctx, FieldMetadata field, int depth)// where T1:struct
+		static bool ShouldSerialize(object target, BitStorage writer, object? value, FieldMetadata field, int depth, int index)
 		{
-			List<object> returnValue = [];
+			return field.TypeResolution[depth].ShouldSerializeMethod?.Invoke(target, writer, value, field.Property, depth, index) ?? true;
+		}
+		static bool ShouldDeserialize(object target, BitStorageReader reader, FieldMetadata field, int depth, int index)
+		{
+			return field.TypeResolution[depth].ShouldDeserializeMethod?.Invoke(target, reader, field.Property, depth, index) ?? true;
+		}
+		private static bool ShouldContinue(object target, BitStorageReader reader, FieldMetadata field, int depth, int i)
+		{
+			return field.TypeResolution[depth].ShouldContinueMethod?.Invoke(target, reader, field.Property, depth, i) ?? true;
+		}
+
+		private static List<object?> ReadEnumerable(object target, BitStorageReader reader, SerializerContext ctx, FieldMetadata field, int depth)// where T1:struct
+		{
+			List<object?> returnValue = [];
 			var countBitLength = field.TypeResolution[depth].LevelTypeResolution?.CountBitLength;
 			var lastDepth = depth == field.TypeResolution.Length - 2;
 			var hasTerminator = field.BitFieldBounds.HasTerminator && lastDepth;
 			var hasEscape = field.BitFieldBounds.HasEscape && lastDepth;
 			var terminator = field.BitFieldBounds.UnsignedTerminator;
 			var escape = field.BitFieldBounds.UnsignedEscape;
+			var shouldContinueMethod = field.TypeResolution[depth].ShouldContinueMethod;
+			var hasShouldContinueMethod = shouldContinueMethod is not null && !lastDepth;
+			var shouldDeserializeMethod = field.TypeResolution[depth].ShouldSerializeMethod;
+			var hasShouldDeserializeMethod = shouldDeserializeMethod is not null && !lastDepth;
 			int count = 0;
-			if (!hasTerminator)
+			if (!hasTerminator && !hasShouldContinueMethod)
 			{
 				if (countBitLength == null)
 				{
@@ -89,7 +116,7 @@ namespace GgoSoft.Serialize
 				{
 					count = ReaderHelper<int>(reader, field, depth, countBitLength.Value);
 					Console.WriteLine($"Read count {count}");
-					if(count <= 0)
+					if(count < 0)
 					{
 						throw new SerializationException($"Field {field.Name}: invalid count read: {count}");
 					}
@@ -97,25 +124,40 @@ namespace GgoSoft.Serialize
 			}
 			returnValue.Add(count);
 			int newDepth = depth + 1;
-			int i = 0;
+			int index = 0;
 			bool done = false;
 			bool escaped = false;
 			while(!done)
 			{
+				if(hasShouldContinueMethod)
+				{
+					bool shouldContinue = ShouldContinue(target, reader, field, depth, index);
+					if (!shouldContinue)
+					{
+						Console.WriteLine($"Reading enum {field.Name} should NOT continue, returned false from {field.TypeResolution[depth].LevelTypeResolution?.ShouldContinueMethod} at depth {depth}");
+						break;
+					}
+					Console.WriteLine($"Reading enum {field.Name} should continue, returned true from {field.TypeResolution[depth].LevelTypeResolution?.ShouldContinueMethod} at depth {depth}");
+				}
+				if(hasShouldDeserializeMethod)
+				{
+					if (!ShouldDeserialize(returnValue, reader, field, newDepth, index))
+					{
+						Console.WriteLine($"Not deserializing due to {field.TypeResolution[0].LevelTypeResolution?.ShouldDeserializeMethod}");
+						continue;
+					}
+					Console.WriteLine($"Deserializing due to {field.TypeResolution[0].LevelTypeResolution?.ShouldDeserializeMethod}");
+				}
 				if (field.TypeResolution[newDepth].CustomBitSerializable is not null)
 				{
 					returnValue.Add(DeserializeCustom(reader, ctx, field));
 				}
 				else if (field.TypeResolution[newDepth].IsPrimitive)
 				{
-					Type classType = typeof(Serializer);
-					MethodInfo openMethod = classType.GetMethod( 						
-						nameof(ReaderHelper), 						
-						BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
-						)!; 					
+					var openMethod = typeof(Serializer).GetMethod(nameof(ReaderHelper),BindingFlags.Static | BindingFlags.NonPublic) ??
+						throw new SerializationException($"Could not find method {typeof(Serializer).FullName}.{nameof(ReaderHelper)}");
 					MethodInfo closedMethod = openMethod.MakeGenericMethod(field.UnderlyingType.FieldType); 					
 					var value = closedMethod.Invoke(null, [reader, field, newDepth, field.ResolvedBits]); 
-					//var value = ReaderHelper(reader, field, newDepth, field.ResolvedBits);
 					if (hasTerminator)
 					{
 						ulong uvalue;
@@ -132,7 +174,7 @@ namespace GgoSoft.Serialize
 						{
 							Console.WriteLine($"Read escape {escape}");
 							escaped = true;
-							i--;
+							index--;
 						}
 						if (!escaped && uvalue == terminator)// || (uvalue == escape && hasEscape))
 						{
@@ -151,24 +193,26 @@ namespace GgoSoft.Serialize
 				}
 				else if (field.TypeResolution[newDepth].IsEnumerable)
 				{
-					returnValue.Add(ReadEnumerable(reader, ctx, field, newDepth));
+					returnValue.Add(ReadEnumerable(target, reader, ctx, field, newDepth));
 				}
 				else
 				{
 					throw new SerializationException($"Was expecting primitive or enumerable on {field.Name} at depth {depth}");
 				}
-				i++;
-				if (!hasTerminator)
+				index++;
+				if (!hasTerminator && !hasShouldContinueMethod)
 				{
-					done = i >= count;
+					done = index >= count;
 				}
 			}
-			if(hasTerminator)
+			if(hasTerminator || hasShouldContinueMethod)
 			{
-				returnValue[0] = i;
+				returnValue[0] = index;
 			}
 			return returnValue;
 		}
+
+
 		private static object ProcessNode(FieldMetadata field, int depth, object currentNode)
 		{
 			Type targetType = field.TypeResolution[depth].FieldType;
@@ -220,14 +264,13 @@ namespace GgoSoft.Serialize
 
 			throw new InvalidOperationException($"Structure mismatch at depth {depth} for {field.Name}");
 		}
-		static void WriteEnumerable(BitStorage storage, SerializerContext ctx, FieldMetadata field, object? valueObject, int depth)
+		static void WriteEnumerable(object target, BitStorage storage, SerializerContext ctx, FieldMetadata field, object? valueObject, int depth)
 		{
 			if (valueObject == null)
 			{
 				throw new SerializationException($"Wasn't expecting null as a value on {field.Name} at depth {depth}");
 			}
 			IEnumerable enumerable = (IEnumerable)valueObject;
-			bool first = true;
 			var countBitLength = field.TypeResolution[depth].LevelTypeResolution?.CountBitLength;
 			var maxCountAllowed = (1 << countBitLength) - 1;
 			var lastDepth = depth == field.TypeResolution.Length - 2;
@@ -235,33 +278,52 @@ namespace GgoSoft.Serialize
 			var hasEscape = field.BitFieldBounds.HasEscape && lastDepth;
 			var terminator = field.BitFieldBounds.UnsignedTerminator;
 			var escape = field.BitFieldBounds.UnsignedEscape;
-			var isCustom = field.TypeResolution[depth].CustomBitSerializable is not null;
+			var continueMethod = field.TypeResolution[depth].ShouldContinueMethod;
+			var hasContinueMethod = continueMethod is not null;
+			var shouldSerializeMethod = field.TypeResolution[depth].ShouldSerializeMethod;
+			var hasShouldSerializeMethod = shouldSerializeMethod is not null;
+			//if(hasShouldSerializeMethod)
+			//{
+			//	var conditional = shouldSerializeMethod?.Invoke(target, storage, valueObject, field.Property, depth, 0);
+			//	if (conditional is not true)
+			//	{
+			//		return;
+			//	}
+			//}
+			bool first = true;
 			if (!hasTerminator && countBitLength == null/* && !isCustom*/)
 			{
 				throw new SerializationException($"Field {field.Name}: Couldn't find count bit length on depth {depth}");
 			}
-
+			int index = -1;
 			foreach (var value in enumerable)
 			{
+				index++;
 				if (first)
 				{
-					if (!hasTerminator)
+					if (!hasTerminator && !hasContinueMethod)
 					{
 						int count = (int)value;
 						if (count > maxCountAllowed)
 						{
 							throw new SerializationException($"Field {field.Name}: Found {count} elements, but count bit length only allows up to {maxCountAllowed} at depth {depth}");
 						}
-						Console.WriteLine($"Write Count {count} bitlength {countBitLength}");
+						Console.WriteLine($"Write Count {count} bitlength {countBitLength} at depth {depth}");
 						storage.Write(count, countBitLength);
 					}
+					first = false;
 				}
 				else
 				{
 					int newDepth = depth + 1;
+					if (!ShouldSerialize(target, storage, valueObject, field, newDepth, index))
+					{
+						Console.WriteLine($"Not serializing due to {field.TypeResolution[newDepth].LevelTypeResolution?.ShouldSerializeMethod}");
+						continue;
+					}
 					if (field.TypeResolution[newDepth].CustomBitSerializable is not null)
 					{
-						SerializeCustom(storage, ctx, field, value);
+						SerializeCustom(storage, ctx, field, value, newDepth);
 					}
 					else if (field.TypeResolution[newDepth].IsPrimitive)
 					{
@@ -280,7 +342,7 @@ namespace GgoSoft.Serialize
 							{
 								if(hasEscape)
 								{
-									Console.WriteLine($"Write Escape {escape} bitlength {field.ResolvedBits}");
+									Console.WriteLine($"Write Escape {escape} bitlength {field.ResolvedBits} at depth {depth}");
 									storage.Write(escape, field.ResolvedBits);
 								} else
 								{
@@ -288,48 +350,58 @@ namespace GgoSoft.Serialize
 								}
 							}
 						}
-						WritePrimitive(storage, field, value);
+						WritePrimitive(storage, field, value, newDepth);
 					}
 					else if (field.TypeResolution[newDepth].IsEnumerable)
 					{
-						WriteEnumerable(storage, ctx, field, value, newDepth);
+						WriteEnumerable(target, storage, ctx, field, value, newDepth);
 					}
 					else
 					{
 						throw new SerializationException($"Was expecting primitive or enumerable on {field.Name} at depth {depth}");
 					}
 				}
-				first = false;
 			}
 			if(hasTerminator)
 			{
-				Console.WriteLine($"Write terminator {terminator} bitlength {field.ResolvedBits}");
+				Console.WriteLine($"Write terminator {terminator} bitlength {field.ResolvedBits} at depth {depth}");
 				storage.Write(terminator, field.ResolvedBits);
 			}
+			if(hasContinueMethod)
+			{
+				Console.WriteLine($"Not writing any count or terminator due to ContinueMethod {field.TypeResolution[depth].LevelTypeResolution?.ShouldContinueMethod} at depth {depth}");
+			}
 		}
-		static List<object> EvaluateEnumerable(FieldMetadata field, object? valueObject, int depth, BitStorage storage, SerializerContext ctx)
+		static List<object>? EvaluateEnumerable(object obj, FieldMetadata field, object? valueObject, int depth, BitStorage storage, SerializerContext ctx)
 		{
-			if(valueObject == null)
+
+			if (valueObject == null)
 			{
 				throw new SerializationException($"Wasn't expecting null as a value on {field.Name} at depth {depth}");
 			}
 			IEnumerable enumerable = (IEnumerable)valueObject;
 			List<object> returnValue = [0];
 			int newDepth = depth + 1;
+			int index = -1;
 			foreach(var value in enumerable)
 			{
-				//if (field.TypeResolution[newDepth].CustomBitSerializable is not null)
-				//{
-				//	SerializeCustom(storage, ctx, field, value);
-				//} 
-				//else
+				index++;
+				if (!ShouldSerialize(obj, storage, value, field, newDepth, index))
+				{
+					Console.WriteLine($"Not serializing due to {field.TypeResolution[newDepth].LevelTypeResolution?.ShouldSerializeMethod} at depth {newDepth}");
+					continue;
+				}
 				if (field.TypeResolution[newDepth].IsPrimitive || field.TypeResolution[newDepth].CustomBitSerializable is not null)
 				{
 					returnValue.Add(value);
 				}
 				else if (field.TypeResolution[newDepth].IsEnumerable)
 				{
-					returnValue.Add(EvaluateEnumerable(field, value, newDepth, storage, ctx));
+					var tempElement = EvaluateEnumerable(obj, field, value, newDepth, storage, ctx);
+					if (tempElement is not null)
+					{
+						returnValue.Add(tempElement);
+					}
 				}
 				else
 				{
@@ -340,10 +412,15 @@ namespace GgoSoft.Serialize
 			return returnValue;
 		}
 
-		private static void WritePrimitive(BitStorage storage, FieldMetadata field, object? valueObject)
+		private static void WritePrimitive(BitStorage storage, FieldMetadata field, object? valueObject, int depth)
 		{
 			if (valueObject != null)
 			{
+				//if (!ShouldSerialize(obj, valueObject, field, depth))
+				//{
+				//	Console.WriteLine($"Not serializing due to {field.TypeResolution[depth].LevelTypeResolution?.ShouldSerializeMethod}");
+				//	return;
+				//}
 				if (field.UnderlyingType.Signed)
 				{
 					var (value, _) = FieldMetadataBuilder.ValidateDefaultValue(field, valueObject);
@@ -381,11 +458,15 @@ namespace GgoSoft.Serialize
 			foreach (var field in metadata.FieldsInOrder)
 			{
 				Console.WriteLine($"Deserializing {field.Name}");
+				if(!ShouldDeserialize(returnValue, reader, field, 0, 0))
+				{
+					Console.WriteLine($"Not deserializing due to {field.TypeResolution[0].LevelTypeResolution?.ShouldDeserializeMethod}");
+					continue;
+				}
 				if (field.TypeResolution[0].CustomBitSerializable != null)
 				{
 					var obj2 = DeserializeCustom(reader, ctx, field);
 					field.Accessors.Setter(returnValue, obj2);
-
 				}
 				else if (field.TypeResolution[0].IsPrimitive)
 				{
@@ -393,28 +474,9 @@ namespace GgoSoft.Serialize
 				}
 				else
 				{
-					//Type classType = typeof(Serializer);
-
-					//// 2. Fetch the open generic static method definition
-					//MethodInfo openMethod = classType.GetMethod(
-					//	nameof(ReadEnumerable),
-					//	BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
-					//)!;
-
-					//// 3. Bind your runtime Type variable to create the concrete method
-					//MethodInfo closedMethod = openMethod.MakeGenericMethod(field.UnderlyingType.FieldType);
-
-					//// 4. Invoke it: First argument is null because it is a static method
-					////object? list = closedMethod.Invoke(null, [reader, field, 0]);
-					List<object> list = ReadEnumerable(reader, ctx, field, 0);
-					//if (list is List<object> processingList)
-					//{
-						var processedList = ProcessNode(field, 0, list);
-						field.Accessors.Setter(returnValue, processedList);
-					//} else
-					//{
-					//	throw new SerializationException($"Expected List<object> non-null from ReadEnumerable in {field.Name}");
-					//}
+					List<object?> list = ReadEnumerable(returnValue, reader, ctx, field, 0);
+					var processedList = ProcessNode(field, 0, list);
+					field.Accessors.Setter(returnValue, processedList);
 				}
 				Console.WriteLine();
 			}
@@ -423,15 +485,12 @@ namespace GgoSoft.Serialize
 
 		private static object? DeserializeCustom(BitStorageReader reader, SerializerContext ctx/*, object returnValue*/, FieldMetadata field)
 		{
-			var openMethod = typeof(Serializer).GetMethod(
-				nameof(DeserializeObject),
-				BindingFlags.Public | BindingFlags.Static
-			);
+			var openMethod = typeof(Serializer).GetMethod(nameof(DeserializeObject),BindingFlags.Public | BindingFlags.Static) ??
+				throw new SerializationException($"Could not find method {typeof(Serializer).FullName}.{nameof(DeserializeObject)}");
 
 			var closedMethod = openMethod.MakeGenericMethod(field.UnderlyingType.FieldType);
 
-			return closedMethod.Invoke(null, new object[] { reader, ctx });
-			//field.Accessors.Setter(returnValue, obj2);
+			return closedMethod.Invoke(null, [ reader, ctx ]);
 		}
 
 		private static void ReadAndSetFast(BitStorageReader reader, FieldMetadata fm, object target)

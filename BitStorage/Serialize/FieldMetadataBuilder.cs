@@ -1,18 +1,13 @@
 ﻿using GgoSoft.Storage;
-using Microsoft.VisualBasic.FileIO;
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Numerics;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace GgoSoft.Serialize
 {
@@ -30,16 +25,10 @@ namespace GgoSoft.Serialize
 			return $"Depth: {Depth}\nMode: {Mode}\nCountBitLength: {CountBitLength}\nTerminatorValue: {TerminatorValue}\nEscapeValue: {EscapeValue}";
 		}
 	}
-	public sealed class FieldMetadataBuilder
+	public sealed class FieldMetadataBuilder(SerializerOptions options, IServiceProvider? services = null)
 	{
-		private readonly SerializerOptions _options;
-		private readonly IServiceProvider? _services;
-
-		public FieldMetadataBuilder(SerializerOptions options, IServiceProvider? services = null)
-		{
-			_options = options ?? throw new ArgumentNullException(nameof(options));
-			_services = services ?? options.Services;
-		}
+		private readonly SerializerOptions _options = options ?? throw new ArgumentNullException(nameof(options));
+		private readonly IServiceProvider? _services = services ?? options.Services;
 
 		/// <summary>
 		/// Discover properties annotated with <see cref="BitFieldAttribute"/>, resolve accessors
@@ -48,7 +37,7 @@ namespace GgoSoft.Serialize
 		/// </summary>
 		public TypeMetadata BuildTypeMetadata(Type type)
 		{
-			if (type == null) throw new ArgumentNullException(nameof(type));
+			ArgumentNullException.ThrowIfNull(type);
 			// S3011 is a false positive here, since later we validate that the property has accessible getters/setters
 			// and we only use the accessors if allowed by the attribute or global options (AllowNonPublicAccess -- default=false).
 			// We need to be able to read non-public properties when allowed, and there's no way to get the attributes without
@@ -57,27 +46,14 @@ namespace GgoSoft.Serialize
 			var props = from p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
 						let bitField = MetadataEngine.Hydrate(p)
 						let levels = MetadataEngine.HydrateMultiple<BitFieldLevelAttribute>(p)
-						where bitField != null || levels.Any()
+						where bitField != null || levels.Count != 0
 						orderby bitField.HasOrder ? bitField.Order : p.MetadataToken, p.MetadataToken
-						select BuildFieldMetadata(p, bitField, levels.ToArray());
-			//var props = from p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-			//			let attr = p.GetCustomAttribute<BitFieldAttribute>()
-			//			where attr != null
-			//			orderby attr.OrderNullable ?? p.MetadataToken, p.MetadataToken
-			//			select BuildFieldMetadata(p, attr); // new { Prop = p, Attr = attr };
-			//type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-			//			.Select(p => new { Prop = p, Attr = p.GetCustomAttribute<BitFieldAttribute>() })
-			//			.Where(x => x.Attr != null)
-			//			.OrderBy(x => x.Attr!.OrderNullable ?? x.Prop.MetadataToken)
-			//			.ThenBy(x => x.Prop.MetadataToken);
+						select BuildFieldMetadata(p, bitField, [.. levels]);
 #pragma warning restore S3011
-			//var fields = props//.Select(x => BuildFieldMetadata(x.Prop, x.Attr))
-			//				.ToList()
-			//				.AsReadOnly();
 			return new TypeMetadata
 			{
 				Type = type,
-				FieldsInOrder = props.ToImmutableArray()
+				FieldsInOrder = [.. props]
 			};
 		}
 
@@ -97,9 +73,8 @@ namespace GgoSoft.Serialize
 				BitFieldBounds = (attr as IBitFieldBounds) ?? EmptyBitFieldBounds.Instance,
 				TypeResolution = ResolveTypeInfo(prop/*.Name, prop.PropertyType*/, attr, levels),
 				ResolvedOrder = attr.HasOrder ? attr.Order : prop.MetadataToken
-				//LevelTypes = [] // TODO: fill this in
 			};
-			//ResolveSigned(metadata);
+
 			// 1) Basic validations
 			ValidateFieldMetadataPreliminary(metadata);
 
@@ -111,11 +86,10 @@ namespace GgoSoft.Serialize
 				return metadata;
 			}
 			// 2) Parse min/max
-			//var (parsedMin, parsedMax) = ParseBounds(attr, metadata);
 
 			if (metadata.UnderlyingType.CustomBitSerializable is null)
 			{
-				ResolveResolvedBits(metadata);// name, prop, attr, parsedMin, parsedMax, elemType);
+				ResolveResolvedBits(metadata);
 			}
 			// 3) Enumerable-specific rules
 			if (metadata.TypeResolution[0].IsEnumerable)
@@ -127,16 +101,8 @@ namespace GgoSoft.Serialize
 				ValidateEnumerableRules(metadata);
 			}
 
-			// 4) Decide resolvedBits (inference, policy, converters, custom types)
-
-			// 5) Compute representable ranges and validate provided bounds
-			//var (signedMin, signedMax) = SignedRange(resolvedBits);
-			//var unsignedMax = UnsignedMax(resolvedBits);
-			//bool hasRange = true;
-			//ValidateBoundsAgainstBits(name, attr, parsedMin, parsedMax, resolvedBits);
-
 			// 6) Default value validation (assignability + range)
-			ValidateDefaultValue(metadata, metadata.ResolvedDefaultValue);// name, attr, propertyType, resolvedBits);
+			ValidateDefaultValue(metadata, metadata.ResolvedDefaultValue);
 
 			// 7) Resolve condition and converter instances (DI first)
 			var conditionInstance = ResolveConditionInstanceIfNeeded(attr);
@@ -145,32 +111,6 @@ namespace GgoSoft.Serialize
 
 			// 8) Accessor resolution (public fast delegates; non-public only when allowed)
 			metadata.Accessors = ResolveAccessors(prop, attr);
-
-			// 9) Build FieldMetadata
-			//var fm = new FieldMetadata
-			//{
-			//	Name = name,
-			//	Property = prop,
-			//	Getter = getter,
-			//	Setter = setter,
-			//	ResolvedBits = resolvedBits,
-			//	Signed = attr.Signed,
-			//	Optional = attr.Optional,
-			//	DefaultValue = attr.Default,
-			//	Order = attr.Order ?? prop.MetadataToken,
-			//	HasRange = hasRange,
-			//	SignedMin = signedMin,
-			//	SignedMax = signedMax,
-			//	UnsignedMax = unsignedMax,
-			//	PropertyType = propertyType,
-			//	IsEnumerable = isEnumerable,
-			//	ElementType = elemType,
-			//	ConditionInstance = conditionInstance,
-			//	ConverterInstance = converterInstance,
-			//	ParsedMin = parsedMin,
-			//	ParsedMax = parsedMax,
-			//	Description = attr.Description
-			//};
 
 			return metadata;
 		}
@@ -292,11 +232,16 @@ namespace GgoSoft.Serialize
 			// All preliminary checks passed
 		}
 
-		private static readonly ConcurrentDictionary<Type, TypeResolution> _typeResolutionCache = new();
+		//private static readonly ConcurrentDictionary<Type, TypeResolution> _typeResolutionCache = new();
 		private static readonly ConcurrentDictionary<Type, Type?> _elementTypeCache = new();
 
 		public static bool TryGetEnumerableElementType([NotNullWhen(true)]Type? type, [NotNullWhen(true)] out Type? elementType)
 		{
+			if(type == null)
+			{
+				elementType = null;
+				return false;
+			}
 			elementType = _elementTypeCache.GetOrAdd(type, t =>
 			{
 				if (t == typeof(string)) return typeof(char);
@@ -320,26 +265,7 @@ namespace GgoSoft.Serialize
 			return elementType != null;
 		}
 
-		//private void ResolveSigned(FieldMetadata metadata)
-		//{
-		//	var specifiedSigned = metadata.Attribute.SignedNullable;
-		//	var nativeSigned = metadata.TypeResolution.NativeSigned;
-		//	var globalSigned = _options.Signed;
-		//	if (specifiedSigned.HasValue)
-		//	{
-		//		metadata.ResolvedSigned = specifiedSigned.Value;
-		//	}
-		//	else if (globalSigned.HasValue)
-		//	{
-		//		metadata.ResolvedSigned = globalSigned.Value;
-		//	}
-		//	else
-		//	{
-		//		metadata.ResolvedSigned = nativeSigned;
-		//	}
-		//}
-
-		public TypeResolution? TryGetPrimitiveWidth(string fieldName, Type fieldType, BitFieldAttribute attr, int depth, BitFieldLevelAttribute?[] levels)	
+		public TypeResolution? TryGetPrimitiveWidth(string fieldName, Type fieldType, Type declaringType, BitFieldAttribute attr, int depth, BitFieldLevelAttribute?[] levels)	
 		{
 			// unwrap nullable<T>
 			var underlying = Nullable.GetUnderlyingType(fieldType);
@@ -358,7 +284,7 @@ namespace GgoSoft.Serialize
 			//{
 			//	throw new SerializationException($"A primitive type cannot have BitFieldLevel attributes in {fieldName}");
 			//}
-			if(depth < levels.Length)
+			if(depth + 1 < levels.Length)
 			{
 				throw new SerializationException($"Depth of BitFieldLevel attributes must match the nesting depth of the type. Expected depth {depth}, but found {levels.Length} in {fieldName}.");
 			}
@@ -388,6 +314,9 @@ namespace GgoSoft.Serialize
 				Signed = effectiveSigned,
 				//EnumerableElement = null,
 				CustomBitSerializable = null,
+				ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
+				ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
+				ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
 				LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false),
 			};
 		}
@@ -438,6 +367,19 @@ namespace GgoSoft.Serialize
 		//	}
 		//	return null;
 		//}
+		//private static MethodInfo? GetShouldContinueOrShouldDeserialize(Type type, string? methodName)
+		//{
+		//	return GetMethod(type, methodName, [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)]);
+		//}
+		//private static T? GetMethod<T>(Type type, string? methodName) where T: Delegate
+		//{
+		//	if(methodName == null)
+		//	{
+		//		return null;
+		//	}
+		//	return MethodDelegateFactory.CreateMethod<T>(type, methodName);
+		//	//return type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, parameters);
+		//}
 		private static bool IsNullable(PropertyInfo property)
 		{
 			NullabilityInfoContext nullabilityInfoContext = new NullabilityInfoContext();
@@ -453,10 +395,11 @@ namespace GgoSoft.Serialize
 		{
 			string fieldName = prop.Name;
 			Type type = prop.PropertyType;
+			var declaringType = prop.DeclaringType;
 			int depth = 0;
 			var normalizedLevels = NormalizeBitLevels(fieldName, levels);
 			// Fast path for primitives
-			var typeResolution = TryGetPrimitiveWidth(fieldName, type, attr, depth, normalizedLevels);
+			var typeResolution = TryGetPrimitiveWidth(fieldName, type, declaringType, attr, depth, normalizedLevels);
 			if (typeResolution is not null)
 			{
 				//typeResolutionResult.Add(typeResolution);
@@ -476,6 +419,7 @@ namespace GgoSoft.Serialize
 			_ = ResolveTypeInfoCore(
 				fieldName,
 				type,
+				declaringType,
 				depth: 0,
 				//optionalByDepth,
 				//condPropByDepth,
@@ -530,174 +474,10 @@ namespace GgoSoft.Serialize
 			}
 			return returnResult.ToArray();
 		}
-		//public static int[] ParseElementIntList(string? input) => ParseElementList(input, default, int.Parse);
-		//public static bool?[] ParseElementNullBoolList(string? input) => ParseElementList<bool?>(input, null, s=>bool.Parse(s));
-		//public static bool[] ParseElementBoolList(string? input) => ParseElementList(input, default, bool.Parse);
-		//public static string?[] ParseElementStringList(string? input) => ParseElementList(input, default, s => s);
-		//public static T[] ParseElementList<T>(string? input, T defaultValue, Func<string, T> parseValue)
-		//{
-		//	if (string.IsNullOrWhiteSpace(input))
-		//		return [];
-
-		//	var tokens = input.Split(',');
-		//	var list = new List<T>();
-
-		//	int positionalDepth = 1;
-
-		//	foreach (var raw in tokens)
-		//	{
-		//		var token = raw;
-
-		//		if (token.Length == 0)
-		//		{
-		//			positionalDepth++;
-		//			continue;
-		//		}
-
-		//		// keyed entry: N:value
-		//		var parts = token.Split(':', 2);
-
-		//		if (parts.Length == 2)
-		//		{
-		//			if (!int.TryParse(parts[0], out int depth) || depth < 1)
-		//				throw new FormatException($"Invalid depth index '{parts[0]}' in '{token}'.");
-		//			if (depth < positionalDepth)
-		//			{
-		//				throw new FormatException($"Depth ({depth}) cannot be less than the current index ({positionalDepth})");
-		//			}
-		//			positionalDepth = depth;
-		//			token = parts[1];
-		//		}
-		//		while (list.Count <= positionalDepth)
-		//		{
-		//			list.Add(defaultValue);
-		//		}
-		//		list[positionalDepth] = parseValue(token);
-		//		positionalDepth++;
-		//	}
-
-		//	return [.. list];
-		//}
-
-		//public static EnumerableFraming[] ParseCountTerminator(string?[] values, int maxCountBits = 31)
-		//{
-		//	if(maxCountBits <= 0)
-		//	{
-		//		throw new ArgumentException("Value must be greater than 0", nameof(maxCountBits));
-		//	}
-		//	if (values.Length == 0) return [];
-		//	if (values.Length == 1) throw new SerializationException($"Unknown error, Count/terminator length is 1: {values[1]}");
-		//	EnumerableFraming[] returnValue = new EnumerableFraming[values.Length];
-		//	for (int depth = 1; depth < values.Length; depth++)
-		//	{
-		//		string? entry = values[depth];
-		//		if(entry == null)
-		//		{
-		//			returnValue[depth] = new () {Depth = depth};
-		//			continue;
-		//		}
-		//		long? countValue = null;
-		//		long? termValue = null;
-		//		long? escValue = null;
-		//		string[] pairs = entry.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-		//		foreach (string pair in pairs)
-		//		{
-		//			// 2. Split into key/value and automatically trim whitespace around the equals sign
-		//			string[] parts = pair.Split('=', 2, StringSplitOptions.TrimEntries);
-		//			if(parts.Length != 2)
-		//			{
-		//				throw new SerializationException($"Depth {depth}: invalid attribute in {entry}: {pair}");
-		//			}
-		//			if (!Helpers.TryParseLargeNumberToBitwiseLong(parts[1], out long value))
-		//			{
-		//				throw new FormatException($"Depth {depth}: invalid number for '{parts[0]}' in '{pair}'.");
-		//			}
-		//			var key = parts[0];
-		//			if(string.Equals(key, "count", StringComparison.OrdinalIgnoreCase))
-		//			{
-		//				if(countValue != null)
-		//				{
-		//					throw new SerializationException($"Depth {depth}: Duplicate 'count' ({countValue}) already specified in {entry}");
-		//				}
-		//				if(value < 1 || value > maxCountBits)
-		//				{
-		//					throw new SerializationException($"Depth {depth}: count ({value}) value must be greater than 0 and less than or equal to {maxCountBits}");
-		//				}
-		//				countValue = value;
-		//			} else if(string.Equals(key, "term", StringComparison.OrdinalIgnoreCase))
-		//			{
-		//				if (termValue != null)
-		//				{
-		//					throw new SerializationException($"Depth {depth}: duplicate 'term' ({termValue}) already specified in {entry}");
-		//				}
-		//				termValue = value;
-		//			}
-		//			else if (string.Equals(key, "esc", StringComparison.OrdinalIgnoreCase))
-		//			{
-		//				if (escValue != null)
-		//				{
-		//					throw new SerializationException($"Depth {depth}: duplicate 'esc' ({countValue}) already specified in {entry}");
-		//				}
-
-		//				escValue = value;
-		//			} else
-		//			{
-		//				throw new SerializationException($"Depth {depth}: unknown parameter '{key}' in {entry}");
-		//			}
-		//		}
-		//		if (countValue is not null && (termValue is not null || escValue is not null))
-		//		{
-		//			throw new SerializationException($"Depth {depth}: count cannot be used with term or esc in {entry}");
-		//		}
-		//		if (escValue is not null)
-		//		{
-		//			if (termValue is null)
-		//			{
-		//				throw new SerializationException($"Depth {depth}: 'esc' requires 'term' to be present in {entry}");
-		//			}
-		//			if (escValue == termValue)
-		//			{
-		//				throw new SerializationException($"Depth {depth}: esc value must differ from term value in {entry}");
-		//			}
-		//		}
-		//		if(countValue is null && termValue is null)
-		//		{
-		//			throw new SerializationException($"Depth {depth}: term or count value must be present");
-		//		}
-		//		returnValue[depth] = new()
-		//		{
-		//			CountBitLength = (int?)countValue,
-		//			Depth = depth,
-		//			EscapeValue = escValue,
-		//			Mode = countValue != null?FramingMode.Count:FramingMode.Terminator,
-		//			TerminatorValue = termValue
-		//		};
-		//	}
-		//	return returnValue;
-		//}
-//		public static bool TryParseLargeNumberToBitwiseLong(string input, out long result)
-//{
-//    // ulong handles the entire range from 0 up to ulong.MaxValue
-//    if (ulong.TryParse(input, out ulong ulongValue))
-//    {
-//        // unchecked allows the bitwise conversion even if it exceeds long.MaxValue
-//        result = unchecked((long)ulongValue);
-//        return true;
-//    }
-
-//    // If it fails ulong parsing, check if it's a valid negative standard long
-//    if (long.TryParse(input, out result))
-//    {
-//        return true;
-//    }
-
-//    result = 0;
-//    return false;
-//}
 		private TypeResolution? ResolveTypeInfoCore(
 			string fieldName,
 			Type type,
+			Type declaringType,
 			int depth,
 			//bool?[] optionalByDepth,
 			//string?[] condPropByDepth,
@@ -710,8 +490,6 @@ namespace GgoSoft.Serialize
 		{
 			// Determine optional/conditional values for this depth
 			var level = GetAtDepth(levels, depth);
-			//string? condProp = GetAtDepth(levels, depth);
-			//string? condType = GetAtDepth(levels, depth);
 
 			// If this type is an enumerable, recurse into its element type
 			if (TryGetEnumerableElementType(type, out Type? elementType))
@@ -720,6 +498,7 @@ namespace GgoSoft.Serialize
 				_ = ResolveTypeInfoCore(
 					fieldName,
 					elementType,
+					declaringType,
 					depth + 1,
 					//optionalByDepth,
 					//condPropByDepth,
@@ -737,7 +516,10 @@ namespace GgoSoft.Serialize
 					IsEnumerable = true,
 					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, true),
 					IsNullable = isNullable,
-					IsString = type == typeof(string)
+					IsString = type == typeof(string),
+					ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
+					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
+					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
 					//EnumerableOptional = level?.HasOptional==true?level.Optional:null,
 					//EnumerableConditionalProperty = condProp,
 					//EnumerableConditionalType = condType,
@@ -759,12 +541,15 @@ namespace GgoSoft.Serialize
 					IsPrimitive = false,
 					IsNullable = isNullable,
 					CustomBitSerializable = type,
+					ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
+					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
+					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
 					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false)
 				};
 			}
 			else
 			{
-				underlyingType = TryGetPrimitiveWidth(fieldName, type, attr, depth, levels);
+				underlyingType = TryGetPrimitiveWidth(fieldName, type, declaringType, attr, depth, levels);
 				if (underlyingType == null)
 				{
 					throw new SerializationException($"Unsupported type '{type.FullName}' at depth {depth} in field '{fieldName}'. Only primitive types and enumerables of primitive types are supported.");

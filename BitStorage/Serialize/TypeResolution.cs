@@ -64,7 +64,11 @@ namespace GgoSoft.Serialize
 		//public object? EscapeValue { get; init; }
 		public string? ConditionalProperty { get; init; }
 		public Type? ConditionalType { get; init; }
-		public string? ConditionalMethod { get; init; }
+		//public string? ConditionalMethod { get; init; }
+		public string? ShouldContinueMethod { get; init; }
+		public string? ShouldSerializeMethod { get; init; }
+		public string? ShouldDeserializeMethod { get; init; }
+		//public string? ShouldContinueMethod { get; init; }
 		//public Type? FieldType { get; init; }
 		//public bool IsEnumerable { get; init; }
 		//public bool IsPrimitive { get; init; } 
@@ -88,15 +92,18 @@ namespace GgoSoft.Serialize
 			return new LevelTypeResolution
 			{
 				Depth = levelAttr.Depth,
-				Optional = levelAttr.Optional,
+				//Optional = levelAttr.Optional,
 				//IgnoreIfNull = attr.IgnoreIfNull,
 				CountBitLength = levelAttr.CountBitLength,
 				CountField = levelAttr.CountProperty,
 				//TerminatorValue = attr.TerminatorValue,
 				//EscapeValue = attr.EscapeValue,
-				ConditionalProperty = levelAttr.ConditionalProperty,
-				ConditionalType = levelAttr.ConditionalType,
-				ConditionalMethod = levelAttr.ConditionalMethod
+				//ConditionalProperty = levelAttr.ConditionalProperty,
+				//ConditionalType = levelAttr.ConditionalType,
+				ShouldContinueMethod = levelAttr.ShouldContinueMethod,
+				ShouldSerializeMethod = levelAttr.ShouldSerializeMethod,
+				ShouldDeserializeMethod = levelAttr.ShouldDeserializeMethod,
+				//ShouldContinueMethod = levelAttr.ShouldContinueMethod
 				//FieldType = fieldType,
 				//IsEnumerable = isEnumerable,
 				//IsPrimitive = isPrimitive
@@ -142,6 +149,9 @@ namespace GgoSoft.Serialize
 		public bool Signed { get; init;}
 		public Type? CustomBitSerializable { get; init;}
 		public Type? BitSerializable { get; init;}
+		public MethodDelegateFactory.ShouldContinueInvoker? ShouldContinueMethod { get; init; }
+		public MethodDelegateFactory.ShouldSerializeInvoker? ShouldSerializeMethod { get; init; }
+		public MethodDelegateFactory.ShouldDeserializeInvoker? ShouldDeserializeMethod { get; init;  }
 		//public TypeResolution? EnumerableElement { get; init; }
 		public LevelTypeResolution? LevelTypeResolution { get; init; }
 
