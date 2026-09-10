@@ -94,10 +94,10 @@ namespace GgoSoft.Serialize
 			// 3) Enumerable-specific rules
 			if (metadata.TypeResolution[0].IsEnumerable)
 			{
-				if (attr.OmitIfEquals != null)
-				{
-					throw new SerializationException($"Field '{metadata.Name}': Default is not allowed with an enumerator.");
-				}
+				//if (attr.OmitIfEquals != null)
+				//{
+				//	throw new SerializationException($"Field '{metadata.Name}': Default is not allowed with an enumerator.");
+				//}
 				ValidateEnumerableRules(metadata);
 			}
 
@@ -175,8 +175,8 @@ namespace GgoSoft.Serialize
 			//	Fail("CountBitLength must be in range 1..32.");
 
 			// Default conflicts with TerminatorValue (collection-level terminator semantics)
-			if (attr.OmitIfEquals != null && bounds.HasTerminator)
-				Fail("Default is not allowed when TerminatorValue is used (terminator semantics conflict).");
+			//if (attr.OmitIfEquals != null && bounds.HasTerminator)
+			//	Fail("Default is not allowed when TerminatorValue is used (terminator semantics conflict).");
 
 			// Conditional fields: combine/mode only meaningful when a condition is present
 			bool hasCondition = !string.IsNullOrEmpty(attr.ConditionalProperty) || attr.ConditionalType != null;
@@ -214,7 +214,7 @@ namespace GgoSoft.Serialize
 				//if (attr.HasCountBitLength || attr.HasTerminatorValue)
 				//	Fail("CountBitLength and TerminatorValue cannot be used with a custom serializer.");
 				// Default allowed only if documented; otherwise reject
-				if (attr.OmitIfEquals != null) Fail("Default is not allowed with a custom serializer unless the serializer documents support.");
+				//if (attr.OmitIfEquals != null) Fail("Default is not allowed with a custom serializer unless the serializer documents support.");
 			}
 			else if ((metadata.UnderlyingType?.FieldType) == null)
 			{
@@ -315,8 +315,8 @@ namespace GgoSoft.Serialize
 				//EnumerableElement = null,
 				CustomBitSerializable = null,
 				ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
-				ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
-				ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
+				ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerialize),
+				ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserialize),
 				LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false),
 			};
 		}
@@ -518,8 +518,8 @@ namespace GgoSoft.Serialize
 					IsNullable = isNullable,
 					IsString = type == typeof(string),
 					ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
-					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
-					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
+					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerialize),
+					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserialize),
 					//EnumerableOptional = level?.HasOptional==true?level.Optional:null,
 					//EnumerableConditionalProperty = condProp,
 					//EnumerableConditionalType = condType,
@@ -542,8 +542,8 @@ namespace GgoSoft.Serialize
 					IsNullable = isNullable,
 					CustomBitSerializable = type,
 					ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
-					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerializeMethod),
-					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserializeMethod),
+					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerialize),
+					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserialize),
 					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false)
 				};
 			}

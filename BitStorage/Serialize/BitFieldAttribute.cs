@@ -269,25 +269,55 @@ consuming it, allowing the condition method to make a decision based on the next
 
 namespace GgoSoft.Serialize
 {
+	public interface IBitFieldLevel
+	{
+		string? ShouldDeserialize { get; set; }
+		string? ShouldSerialize { get; set; }
+		string? DeserializeConverter { get; set; }
+		string? SerializeConverter { get; set; }
+	}
+	[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+	public class BitFieldElementAttribute : Attribute, IBitFieldLevel
+	{
+		public string? ShouldDeserialize { get; set; }
+		public string? ShouldSerialize { get; set; }
+		public string? DeserializeConverter { get; set; }
+		public string? SerializeConverter { get; set; }
+	}
+	//[AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
+	//public class BitFieldCollectionAttribute : Attribute, IBitFieldLevel
+	//{
+	//	// Shared Interface Members
+	//	public string? ShouldDeserialize { get; set; }
+	//	public string? ShouldSerialize { get; set; }
+	//	public string? DeserializeConverter { get; set; }
+	//	public string? SerializeConverter { get; set; }
+
+	//	// Topology Details
+	//	public int Depth { get; set; }
+	//	public int CountBitLength { get; set; }
+	//	public string? CountProperty { get; set; }
+	//	public string? DeserializeContinue { get; set; }
+	//}
 	[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
-	public class BitFieldLevelAttribute : Attribute
+	public class BitFieldLevelAttribute : Attribute, IBitFieldLevel
 	{
 		public int Depth { get; set; }
 		public bool HasDepth { get; internal set; } = false;
 
-		// 8/25/26 -- Removing Optional because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
+		// 8/25/26 -- Removing Optional because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases
 		//public bool Optional { get; set; }
 		//public bool HasOptional { get; internal set; } = false;
 
-		// 8/25/26 -- Removing OmitIfEqual because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
+		// 8/25/26 -- Removing OmitIfEqual because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the case
 		//public object? OmitIfEqual { get; set; }
 		//public bool HasOmitIfEqual { get; internal set; } = false;
 
 		//When true, if the field value is null, it will be omitted from serialization. This is useful for reference types or nullable value types where a null value indicates the absence of data.
 		//If "Optional" is also true, the presence bit will indicate whether the field is included or not, regardless of whether it's null or not. This allows for optional fields that can be omitted without breaking the structure of the bit storage.
-		// 8/25/26 -- Removing IgnoreIfNull because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases that
-		public bool IgnoreIfNull { get; set; }
-		public bool HasIgnoreIfNull { get; internal set; } = false;
+		// 8/25/26 -- Removing IgnoreIfNull because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases
+		//public bool IgnoreIfNull { get; set; }
+		//public bool HasIgnoreIfNull { get; internal set; } = false;
 
 		/// <summary>
 		/// When serializing enumerables, the number of bits used to encode the element count.
@@ -304,17 +334,20 @@ namespace GgoSoft.Serialize
 		//public bool HasCountProperty { get; internal set; } = false;
 
 		// public bool ShouldContinue(BitStorageReader reader, PropertyInfo propInfo, int depth, int currentCount)
-		internal Type[] ShouldContinueParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
+		//internal Type[] ShouldContinueParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
 		public string? ShouldContinueMethod { get; set; }
 		//public bool HasShouldContinueMethod { get; internal set; }
 
-		internal Type[] ShouldSerializeParameters = [typeof(object), typeof(PropertyInfo), typeof(int), typeof(int)];
-		public string? ShouldSerializeMethod { get; set; }
+		//internal Type[] ShouldSerializeParameters = [typeof(object), typeof(PropertyInfo), typeof(int), typeof(int)];
+		public string? ShouldSerialize { get; set; }
 		//public bool HasShouldSerializeMethod { get; internal set; }
 
-		internal Type[] ShouldDeserializeParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
-		public string? ShouldDeserializeMethod { get; set; }
+		//internal Type[] ShouldDeserializeParameters = [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)];
+		public string? ShouldDeserialize { get; set; }
 		//public bool HasShouldDeserializeMethod { get; internal set; }
+
+		public string? DeserializeConverter { get; set; }
+		public string? SerializeConverter { get; set; }
 
 		//Optional name of another property on the same object used for simple conditional inclusion.
 		//If this property is null, false, or empty, the current field will be excluded.
@@ -469,17 +502,18 @@ namespace GgoSoft.Serialize
 		/// </summary>
 		public Type? ConditionalType { get; set; } = null;
 
-		/// <summary>
-		/// Optional name of a method on the same object used for conditional inclusion.  This method must have the signature of
-		/// <code>
-		/// bool Method(<see cref="FieldMetadata"/> fm)
-		/// bool Method(<see cref="FieldMetadata"/> fm, object? sourceValue)
-		/// bool Method(<see cref="FieldMetadata"/> fm, int elementIndex) // for enumerables
-		/// bool Method(<see cref="FieldMetadata"/> fm, int elementIndex, object? elementPreview) // for enumerables
-		/// bool Method() //fallback; no context
-		/// </code>
-		/// </summary>
-		public Type? ConditionalMethod { get; set; } = null;
+		///// <summary>
+		///// Optional name of a method on the same object used for conditional inclusion.  This method must have the signature of
+		///// <code>
+		///// bool Method(<see cref="FieldMetadata"/> fm)
+		///// bool Method(<see cref="FieldMetadata"/> fm, object? sourceValue)
+		///// bool Method(<see cref="FieldMetadata"/> fm, int elementIndex) // for enumerables
+		///// bool Method(<see cref="FieldMetadata"/> fm, int elementIndex, object? elementPreview) // for enumerables
+		///// bool Method() //fallback; no context
+		///// </code>
+		///// </summary>
+		// 8/29/26 -- Removing ConditionalMethod because ShouldSerialize and ShouldDeserialize are more flexible and can handle all the cases
+		//public Type? ConditionalMethod { get; set; } = null;
 
 		/// <summary>
 		/// How multiple conditional checks are combined when both <see cref="ConditionalProperty"/> and <see cref="ConditionalType"/>
@@ -520,7 +554,7 @@ namespace GgoSoft.Serialize
 		/// Default value for the field used during deserialization when the field is omitted.
 		/// The builder validates that this value is assignable to the property type and fits the resolved range.
 		/// </summary>
-		public object? OmitIfEquals { get; set; } = null; // TODO: OmitIfEquals only makes sense with Optional, which isn't working
+		//public object? OmitIfEquals { get; set; } = null; // TODO: OmitIfEquals only makes sense with Optional, which isn't working
 
 		/// <summary>
 		/// Optional ordering hint for fields. When not set, the builder uses the property's metadata token.

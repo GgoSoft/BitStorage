@@ -101,8 +101,8 @@ namespace GgoSoft.Serialize
 				//ConditionalProperty = levelAttr.ConditionalProperty,
 				//ConditionalType = levelAttr.ConditionalType,
 				ShouldContinueMethod = levelAttr.ShouldContinueMethod,
-				ShouldSerializeMethod = levelAttr.ShouldSerializeMethod,
-				ShouldDeserializeMethod = levelAttr.ShouldDeserializeMethod,
+				ShouldSerializeMethod = levelAttr.ShouldSerialize,
+				ShouldDeserializeMethod = levelAttr.ShouldDeserialize,
 				//ShouldContinueMethod = levelAttr.ShouldContinueMethod
 				//FieldType = fieldType,
 				//IsEnumerable = isEnumerable,
