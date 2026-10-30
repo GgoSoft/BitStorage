@@ -94,10 +94,6 @@ namespace GgoSoft.Serialize
 			// 3) Enumerable-specific rules
 			if (metadata.TypeResolution[0].IsEnumerable)
 			{
-				//if (attr.OmitIfEquals != null)
-				//{
-				//	throw new SerializationException($"Field '{metadata.Name}': Default is not allowed with an enumerator.");
-				//}
 				ValidateEnumerableRules(metadata);
 			}
 
@@ -130,20 +126,8 @@ namespace GgoSoft.Serialize
 			if (attr.HasBits && attr.InferBits)
 				Fail("Bits cannot be specified when InferBits is true.");
 
-			//if (attr.HasCountBitLength && attr.HasTerminatorValue)
-			//	Fail("for IEnumerable<T> needs to provide exactly one of CountBitLength or TerminatorValue.");
-
-			//if (bounds.HasMin && attr.HasUnsignedMin)
-			//	Fail("Min and UnsignedMin are mutually exclusive.");
-
-			//if (attr.HasMax && attr.HasUnsignedMax)
-			//	Fail("Max and UnsignedMax are mutually exclusive.");
-
 			if (metadata.UnderlyingType.Signed)
 			{
-				//if (attr.HasUnsignedMin || attr.HasUnsignedMax)
-				//	Fail("Signed=true cannot be used together with UnsignedMin/UnsignedMax.");
-
 				if ((metadata.UnderlyingType?.NativeSigned) != true)
 					Fail("Signed=true cannot be used with an unsigned type");
 			} else
@@ -162,22 +146,10 @@ namespace GgoSoft.Serialize
 			}
 			if (!metadata.TypeResolution[0].IsEnumerable)
 			{ 
-				// CountBitLength only makes sense for enumerables
-				//if (attr.HasCountBitLength)
-				//	Fail("CountBitLength is only valid for enumerable fields.");
-
 				// TerminatorValue only makes sense for enumerables
 				if (bounds.HasTerminator)
 					Fail("TerminatorValue is only valid for enumerable fields.");
 			}
-			// CountBitLength range check (cheap)
-			//if (attr.HasCountBitLength && (attr.CountBitLength < 1 || attr.CountBitLength > 32))
-			//	Fail("CountBitLength must be in range 1..32.");
-
-			// Default conflicts with TerminatorValue (collection-level terminator semantics)
-			//if (attr.OmitIfEquals != null && bounds.HasTerminator)
-			//	Fail("Default is not allowed when TerminatorValue is used (terminator semantics conflict).");
-
 			// Conditional fields: combine/mode only meaningful when a condition is present
 			bool hasCondition = !string.IsNullOrEmpty(attr.ConditionalProperty) || attr.ConditionalType != null;
 			if (!hasCondition && (attr.ConditionCombine != ConditionCombine.And || attr.ConditionMode != ConditionEvaluationMode.Snapshot))
@@ -211,10 +183,6 @@ namespace GgoSoft.Serialize
 				if (attr.InferBits) Fail("InferBits cannot be used with a custom serializer.");
 				if (bounds.HasMin || bounds.HasMax)
 					Fail("Min/Max/UnsignedMin/UnsignedMax cannot be used with a custom serializer.");
-				//if (attr.HasCountBitLength || attr.HasTerminatorValue)
-				//	Fail("CountBitLength and TerminatorValue cannot be used with a custom serializer.");
-				// Default allowed only if documented; otherwise reject
-				//if (attr.OmitIfEquals != null) Fail("Default is not allowed with a custom serializer unless the serializer documents support.");
 			}
 			else if ((metadata.UnderlyingType?.FieldType) == null)
 			{
@@ -232,7 +200,6 @@ namespace GgoSoft.Serialize
 			// All preliminary checks passed
 		}
 
-		//private static readonly ConcurrentDictionary<Type, TypeResolution> _typeResolutionCache = new();
 		private static readonly ConcurrentDictionary<Type, Type?> _elementTypeCache = new();
 
 		public static bool TryGetEnumerableElementType([NotNullWhen(true)]Type? type, [NotNullWhen(true)] out Type? elementType)
@@ -280,10 +247,6 @@ namespace GgoSoft.Serialize
 			if (!Helpers.TryGetNativePrimitiveInfo(underlying, out int nativeWidth, out bool nativeSigned))
 				return null;
 
-			//if (depth == 0 && levels.Length != 0)
-			//{
-			//	throw new SerializationException($"A primitive type cannot have BitFieldLevel attributes in {fieldName}");
-			//}
 			if(depth + 1 < levels.Length)
 			{
 				throw new SerializationException($"Depth of BitFieldLevel attributes must match the nesting depth of the type. Expected depth {depth}, but found {levels.Length} in {fieldName}.");
@@ -291,9 +254,6 @@ namespace GgoSoft.Serialize
 
 			// determine effective signedness
 			bool effectiveSigned = attr.HasSigned ? attr.Signed : (_options.Signed ?? nativeSigned);
-				//attr.SignedNullable ??
-				//_options.Signed ??
-				//nativeSigned;
 
 			// determine effective width
 			int effectiveWidth = nativeWidth;
@@ -320,66 +280,7 @@ namespace GgoSoft.Serialize
 				LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, false),
 			};
 		}
-		//public TypeResolution? TryGetPrimitiveWidth(Type fieldType, BitFieldAttribute attr)
-		//{
-		//	var underlying = Nullable.GetUnderlyingType(fieldType);
-		//	if (fieldType.IsEnum)
-		//	{
-		//		var underlyingType = Enum.GetUnderlyingType(fieldType);
-		//		return TryGetPrimitiveWidth(underlyingType, attr);
-		//	}
-		//	underlying ??= fieldType;
-		//	if (underlying.IsEnum) underlying = Enum.GetUnderlyingType(underlying);
-		//	(Type dataType, int width, bool signed, bool isPrimitive) returnValue = (typeof(void), 0, false, false);
-		//	if (underlying == typeof(bool)) returnValue = (typeof(bool), 1, false, true);
-		//	if (underlying == typeof(char)) returnValue = (typeof(char), 16, false, true);
-		//	if (underlying == typeof(byte)) returnValue = (typeof(byte), 8, false, true);
-		//	if (underlying == typeof(sbyte)) returnValue = (typeof(sbyte), 8, true, true);
-		//	if (underlying == typeof(short)) returnValue = (typeof(short), 16, true, true);
-		//	if (underlying == typeof(ushort)) returnValue = (typeof(ushort), 16, false, true);
-		//	if (underlying == typeof(int)) returnValue = (typeof(int), 32, true, true);
-		//	if (underlying == typeof(uint)) returnValue = (typeof(uint), 32, false, true);
-		//	if (underlying == typeof(long)) returnValue = (typeof(long), 64, true, true);
-		//	if (underlying == typeof(ulong)) returnValue = (typeof(ulong), 64, false, true);
 
-		//	if (returnValue.isPrimitive)
-		//	{
-		//		bool nativeSigned = returnValue.signed;
-		//		int nativeWidth = returnValue.width;
-		//		if (attr.SignedNullable.HasValue)
-		//		{
-		//			returnValue.signed = attr.SignedNullable.Value;
-		//		}
-		//		else if (_options.Signed.HasValue)
-		//		{
-		//			returnValue.signed = _options.Signed.Value;
-		//		}
-		//		else
-		//		{
-		//			returnValue.signed = nativeSigned;
-		//		}
-		//		int width = nativeWidth;
-		//		if (!returnValue.signed && nativeSigned)
-		//		{
-		//			width--;
-		//		}
-		//		return new TypeResolution(returnValue.dataType, nativeWidth, width, false, returnValue.isPrimitive, /*isNullable, false,*/ nativeSigned, returnValue.signed, null, null);
-		//	}
-		//	return null;
-		//}
-		//private static MethodInfo? GetShouldContinueOrShouldDeserialize(Type type, string? methodName)
-		//{
-		//	return GetMethod(type, methodName, [typeof(BitStorageReader), typeof(PropertyInfo), typeof(int), typeof(int)]);
-		//}
-		//private static T? GetMethod<T>(Type type, string? methodName) where T: Delegate
-		//{
-		//	if(methodName == null)
-		//	{
-		//		return null;
-		//	}
-		//	return MethodDelegateFactory.CreateMethod<T>(type, methodName);
-		//	//return type.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, parameters);
-		//}
 		private static bool IsNullable(PropertyInfo property)
 		{
 			NullabilityInfoContext nullabilityInfoContext = new NullabilityInfoContext();
@@ -391,7 +292,7 @@ namespace GgoSoft.Serialize
 
 			return false;
 		}
-		public TypeResolution[] ResolveTypeInfo(PropertyInfo prop, /*string fieldName, Type type,*/ BitFieldAttribute attr, BitFieldLevelAttribute[] levels) // TODO: maxAllowedBits should be added here
+		public TypeResolution[] ResolveTypeInfo(PropertyInfo prop, BitFieldAttribute attr, BitFieldLevelAttribute[] levels) // TODO: maxAllowedBits should be added here
 		{
 			string fieldName = prop.Name;
 			Type type = prop.PropertyType;
@@ -402,18 +303,8 @@ namespace GgoSoft.Serialize
 			var typeResolution = TryGetPrimitiveWidth(fieldName, type, declaringType, attr, depth, normalizedLevels);
 			if (typeResolution is not null)
 			{
-				//typeResolutionResult.Add(typeResolution);
 				return [typeResolution];
 			}
-			// Parse attribute metadata (already using your new parser)
-			//var attr = type.GetCustomAttribute<YourAttribute>();
-			//bool?[] optionalByDepth = ParseElementNullBoolList(attr.ElementOptional);
-			//if(optionalByDepth.Length > 0)
-			//{
-			//	optionalByDepth[0] = attr.Optional;
-			//}
-			//string?[] condPropByDepth = ParseElementStringList(attr.ElementConditionalProperty);
-			//string?[] condTypeByDepth = ParseElementStringList(attr.ElementConditionalType);
 			bool isNullable = IsNullable(prop);
 			List<TypeResolution> typeResolutionResult = [];
 			_ = ResolveTypeInfoCore(
@@ -421,29 +312,13 @@ namespace GgoSoft.Serialize
 				type,
 				declaringType,
 				depth: 0,
-				//optionalByDepth,
-				//condPropByDepth,
-				//condTypeByDepth,
 				attr,
 				normalizedLevels,
 				typeResolutionResult,
 				isNullable
-			//out _
 			);
 			typeResolutionResult.Reverse();
 			return typeResolutionResult.ToArray();
-			//return ResolveTypeInfoCore(
-			//	fieldName,
-			//	type,
-			//	depth: 0,
-			//	//optionalByDepth,
-			//	//condPropByDepth,
-			//	//condTypeByDepth,
-			//	attr,
-			//	normalizedLevels,
-			//	typeResolutionResult
-			//	//out _
-			//);
 		}
 		public static BitFieldLevelAttribute?[] NormalizeBitLevels(string fieldName, BitFieldLevelAttribute[] levels)
 		{
@@ -479,14 +354,10 @@ namespace GgoSoft.Serialize
 			Type type,
 			Type declaringType,
 			int depth,
-			//bool?[] optionalByDepth,
-			//string?[] condPropByDepth,
-			//string?[] condTypeByDepth,
 			BitFieldAttribute attr,
 			BitFieldLevelAttribute?[] levels,
 			List<TypeResolution> typeResolutionResult,
 			bool? isNullable = null)//,
-			//out TypeResolution? underlyingType)
 		{
 			// Determine optional/conditional values for this depth
 			var level = GetAtDepth(levels, depth);
@@ -500,18 +371,13 @@ namespace GgoSoft.Serialize
 					elementType,
 					declaringType,
 					depth + 1,
-					//optionalByDepth,
-					//condPropByDepth,
-					//condTypeByDepth,
 					attr,
 					levels,
 					typeResolutionResult
-					//out underlyingType
 				);
 				var returnValue = new TypeResolution
 				{
 					FieldType = type,
-					//EnumerableElement = elementResolution,
 					Width = null,
 					IsEnumerable = true,
 					LevelTypeResolution = LevelTypeResolution.Map(fieldName, level, attr, true),
@@ -520,10 +386,6 @@ namespace GgoSoft.Serialize
 					ShouldContinueMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldContinueInvoker>(declaringType, level?.ShouldContinueMethod),
 					ShouldSerializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldSerializeInvoker>(declaringType, level?.ShouldSerialize),
 					ShouldDeserializeMethod = MethodDelegateFactory.CreateMethod<MethodDelegateFactory.ShouldDeserializeInvoker>(declaringType, level?.ShouldDeserialize),
-					//EnumerableOptional = level?.HasOptional==true?level.Optional:null,
-					//EnumerableConditionalProperty = condProp,
-					//EnumerableConditionalType = condType,
-					//UnderlyingType = underlyingType
 				};
 				typeResolutionResult.Add(returnValue);
 				return returnValue;
@@ -557,20 +419,6 @@ namespace GgoSoft.Serialize
 			}
 			typeResolutionResult.Add(underlyingType);
 			return underlyingType;
-			//if (TryGetPrimitiveWidth(type, attr))
-			//{
-			//	return new TypeResolution { 
-			//		EnumerableElement = null,
-			//		Width = width,
-			//		IsEnumerable = false,
-			//		EnumerableOptional = optional,
-			//		EnumerableConditionalProperty = condProp,
-			//		EnumerableConditionalType = condType
-			//	};
-			//}
-
-			// Unsupported type
-//			return null;
 		}
 		private static T? GetAtDepth<T>(T?[] arr, int depth)
 		{
@@ -578,81 +426,6 @@ namespace GgoSoft.Serialize
 				return arr[depth];
 			return default;
 		}
-		//public TypeResolution ResolveTypeInfo(Type fieldType, long maxAllowedBits, BitFieldAttribute attr) // TODO: maxAllowedBits is wrong
-		//{
-		//	// Fast primitive/unwrapping checks first (cheap)
-		//	var underlying = Nullable.GetUnderlyingType(fieldType);
-		//	//var isNullable = (underlying != null); 
-		//	underlying ??= fieldType;
-		//	if (underlying.IsEnum) underlying = Enum.GetUnderlyingType(underlying);
-		//	//int signedAdjustment = signed ? 0 : 1;
-		//	(Type dataType, int width, bool signed, bool isPrimitive) returnValue = (typeof(void), 0, false, false);
-		//	if (underlying == typeof(bool)) returnValue = (typeof(bool), 1, false, true);
-		//	if (underlying == typeof(char)) returnValue = (typeof(char), 16, false, true);
-		//	if (underlying == typeof(byte)) returnValue = (typeof(byte), 8, false, true);
-		//	if (underlying == typeof(sbyte)) returnValue = (typeof(sbyte), 8, true, true);
-		//	if (underlying == typeof(short)) returnValue = (typeof(short), 16, true, true);
-		//	if (underlying == typeof(ushort)) returnValue = (typeof(ushort), 16, false, true);
-		//	if (underlying == typeof(int)) returnValue = (typeof(int), 32, true, true);
-		//	if (underlying == typeof(uint)) returnValue = (typeof(uint), 32, false, true);
-		//	if (underlying == typeof(long)) returnValue = (typeof(long), 64, true, true);
-		//	if (underlying == typeof(ulong)) returnValue = (typeof(ulong), 64, false, true);
-
-		//	if (returnValue.width > 0)
-		//	{
-		//		bool nativeSigned = returnValue.signed;
-		//		int nativeWidth = returnValue.width;
-		//		if (attr.SignedNullable.HasValue)
-		//		{
-		//			returnValue.signed = attr.SignedNullable.Value;
-		//		}
-		//		else if (_options.Signed.HasValue)
-		//		{
-		//			returnValue.signed = _options.Signed.Value;
-		//		}
-		//		else
-		//		{
-		//			returnValue.signed = nativeSigned;
-		//		}
-		//		int width = nativeWidth;
-		//		if (!returnValue.signed && nativeSigned)
-		//		{
-		//			width--;
-		//		}
-		//		return new TypeResolution(returnValue.dataType, nativeWidth, width, false, returnValue.isPrimitive, /*isNullable, false,*/ nativeSigned, returnValue.signed, null, null);
-		//	}
-
-		//	// Cached slow path for non-primitives
-		//	return _typeResolutionCache.GetOrAdd(fieldType, t =>
-		//	{
-		//		Console.WriteLine(t.Name);
-		//		// If it's an enumerable, resolve the element type info (recurses but uses cache)
-		//		if (TryGetEnumerableElementType(t, out var elemType))
-		//		{
-		//			if (elemType == null)
-		//				return new TypeResolution(null, null, null, true, false, /*false, false,*/ false, false, null, null); // non-generic IEnumerable -> unknown element
-
-		//			// Resolve element info (calls back into ResolveTypeInfo but will hit cache for primitives)
-		//			var elemInfo = ResolveTypeInfo(elemType, maxAllowedBits, attr);
-
-		//			// If element width is unknown, caller should require a converter or explicit Bits
-		//			return new TypeResolution(elemType, elemInfo.NativeWidth, elemInfo.Width, true, elemInfo.IsPrimitive, /*isNullable, elemInfo.IsNullable,*/ elemInfo.NativeSigned, elemInfo.Signed, null, null);
-		//		}
-
-		//		// Unknown/unsupported type
-		//		return new TypeResolution(null, null, null, false, false, /*false, false,*/ false, false, null, null);
-		//	});
-		//}
-
-		//private static (BigInteger? parsedMin, BigInteger? parsedMax) ParseBounds(BitFieldAttribute attr, FieldMetadata metadata)
-		//{
-		//	//BigInteger? parsedMin = null, parsedMax = null;
-		//	if (attr.MinNullable.HasValue) parsedMin = new BigInteger(attr.MinNullable.Value);
-		//	if (attr.MaxNullable.HasValue) parsedMax = new BigInteger(attr.MaxNullable.Value);
-		//	if (attr.UnsignedMinNullable.HasValue) parsedMin = new BigInteger(attr.UnsignedMinNullable.Value);
-		//	if (attr.UnsignedMaxNullable.HasValue) parsedMax = new BigInteger(attr.UnsignedMaxNullable.Value);
-		//	return (parsedMin, parsedMax);
-		//}
 
 		private static void ValidateEnumerableRules(FieldMetadata metadata)//string name, BitFieldAttribute attr, Type? elemType)
 		{
@@ -671,13 +444,11 @@ namespace GgoSoft.Serialize
 		private void ResolveResolvedBits(FieldMetadata metadata)
 		{
 			// Determine the "subject type" to consult for native width: element type if enumerable, otherwise the property type.
-			//BigInteger min, max;
 			var primitiveType = metadata.UnderlyingType;
 			var subjectType = primitiveType?.FieldType;
 			var name = metadata.Name;
 			var attr = metadata.Attribute;
 			int maxAllowed = primitiveType?.Width ?? throw new SerializationException("$Field '{name}': Width cannot be null");
-			//bool nativeSigned = primitiveType?.NativeSigned == true;
 
 			if (attr?.HasBits ?? false)
 			{
@@ -689,21 +460,17 @@ namespace GgoSoft.Serialize
 				}
 				maxAllowed = requested;
 				ValidateAndNormalizeBounds(metadata.UnderlyingType.Signed, maxAllowed, metadata);
-				//(min, max) = TryGetMinMax(parsedMin, parsedMax, metadata.ResolvedSigned, maxAllowed, metadata);
 			}
 			// No explicit Bits: follow existing inference / policy logic
 			else if (attr?.HasInferBits ?? _options.AutoInferBits) // if InferBits is true or if it's null and AutoInferBits is true
 			{
 				ValidateAndNormalizeBounds(metadata.UnderlyingType.Signed, maxAllowed, metadata);
-//				(min, max) = TryGetMinMax(parsedMin, parsedMax, metadata.ResolvedSigned, maxAllowed, metadata);
 				maxAllowed = InferBitsFromBounds(metadata, _options.MaxInferredBits);
 			}
 			else
 			{
 				throw new SerializationException($"Field '{name}': Bits not specified and global policy forbids inference.");
 			}
-			// metadata.ResolvedMin = min;
-			// metadata.ResolvedMax = max;
 			metadata.ResolvedBits = maxAllowed;
 		}
 		public static (long? valueSigned, ulong? valueUnsigned) ValidateDefaultValue(FieldMetadata metadata, object? value)
@@ -769,48 +536,6 @@ namespace GgoSoft.Serialize
 				return (null, valAsUnsigned);
 			}
 		}
-
-		//private static void ValidateDefaultValue(FieldMetadata metadata) //string name, object? defaultValue, Type propertyType, BigInteger min, BigInteger max)
-		//{
-		//	if (metadata.Attribute?.OmitIfEquals == null) return; // nothing to validate
-
-		//	BigInteger defaultBig;
-		//	try
-		//	{
-		//		defaultBig = metadata.Attribute.OmitIfEquals switch
-		//		{
-		//			BigInteger bi => bi,
-		//			bool b => b ? BigInteger.One : BigInteger.Zero,
-		//			char c => new BigInteger((ulong)c),
-		//			sbyte sb => new BigInteger(sb),
-		//			byte bb => new BigInteger(bb),
-		//			short ss => new BigInteger(ss),
-		//			ushort us => new BigInteger(us),
-		//			int ii => new BigInteger(ii),
-		//			uint uii => new BigInteger(uii),
-		//			long ll => new BigInteger(ll),
-		//			ulong ull => new BigInteger(ull),
-
-		//			// Optional: accept numeric strings
-		//			string s => (metadata.ResolvedMin < 0)
-		//				? new BigInteger(Convert.ToInt64(s, CultureInfo.InvariantCulture))
-		//				: new BigInteger(Convert.ToUInt64(s, CultureInfo.InvariantCulture)),
-
-		//			// Fallback for other convertible boxed values
-		//			_ => (metadata.ResolvedMin < 0)
-		//				? new BigInteger(Convert.ToInt64(metadata.Attribute.OmitIfEquals, CultureInfo.InvariantCulture))
-		//				: new BigInteger(Convert.ToUInt64(metadata.Attribute.OmitIfEquals, CultureInfo.InvariantCulture))
-		//		};
-		//	}
-		//	catch (Exception ex)
-		//	{
-		//		throw new SerializationException($"Field '{metadata.Name}': error converting Default value: {ex.Message}");
-		//	}
-
-		//	// simple range check (min and max are assumed valid and min < max)
-		//	if (defaultBig < metadata.ResolvedMin || defaultBig > metadata.ResolvedMax)
-		//		throw new SerializationException($"Field '{metadata.Name}': Default value ({defaultBig}) out of range {metadata.ResolvedMin}..{metadata.ResolvedMax}.");
-		//}
 
 		private IFieldCondition? ResolveConditionInstanceIfNeeded(BitFieldAttribute attr)
 		{
@@ -899,12 +624,6 @@ namespace GgoSoft.Serialize
 
 		}
 
-		private static bool TerminatorFits(ulong term, int bits)
-		{
-			if (bits == 64) return true;
-			return term <= ((1UL << bits) - 1UL);
-		}
-
 		private IFieldCondition ResolveConditionInstance(Type conditionType)
 		{
 			if (_services?.GetService(conditionType) is IFieldCondition svc) return svc;
@@ -928,8 +647,6 @@ namespace GgoSoft.Serialize
 		/// <param name="v"></param>
 		/// <returns></returns>
 		private static int InferBitsFromBounds(
-			//BigInteger min,
-			//BigInteger max,
 			FieldMetadata metadata,
 			int maxAllowed) // nativeWidth in bits, if available
 		{
@@ -971,12 +688,11 @@ namespace GgoSoft.Serialize
 
 				return finalValue;
 			}
-			//var attr = metadata.Attribute;
 			var bounds = metadata.BitFieldBounds;
-			var signedMin = bounds.HasMin && bounds.IsSigned ? (long?)bounds.SignedMin : null;// attr.MinNullable;
-			var unsignedMin = bounds.HasMin && !bounds.IsSigned ? (ulong?)bounds.UnsignedMin : null;// attr.UnsignedMinNullable;
-			var signedMax = bounds.HasMax && bounds.IsSigned ? (long?)bounds.SignedMax : null;// attr.MaxNullable;
-			var unsignedMax = bounds.HasMax && !bounds.IsSigned ? (ulong?)bounds.UnsignedMax : null;// attr.UnsignedMaxNullable;
+			var signedMin = bounds.HasMin && bounds.IsSigned ? (long?)bounds.SignedMin : null;
+			var unsignedMin = bounds.HasMin && !bounds.IsSigned ? (ulong?)bounds.UnsignedMin : null;
+			var signedMax = bounds.HasMax && bounds.IsSigned ? (long?)bounds.SignedMax : null;
+			var unsignedMax = bounds.HasMax && !bounds.IsSigned ? (ulong?)bounds.UnsignedMax : null;
 			if (signed)
 			{
 				long nativeMin = -1L << (width - 1);
@@ -996,40 +712,5 @@ namespace GgoSoft.Serialize
 				metadata.ResolvedMaxUnsigned = Validate(unsignedMax ?? (ulong?) signedMax, nativeMin, nativeMax, false);
 			}
 		}
-
-		//private static (BigInteger min, BigInteger max) TryGetMinMax(BigInteger? parsedMin, BigInteger? parsedMax, bool signed, int width, FieldMetadata metadata)
-		//{
-		//	if (width <= 0 || width > 1024) // sanity guard for absurd widths
-		//	{
-		//		throw new SerializationException($"Invalid width {width}.");
-		//	}
-		//	long? minSigned = null;
-		//	long? maxSigned = null;
-		//	ulong? minUnsigned = null;
-		//	ulong? maxUnsigned = null;
-		//	if(signed)
-		//	{
-
-		//	}
-
-		//	BigInteger nativeMin = signed ? -(BigInteger.One << (width - 1)) : BigInteger.Zero;
-		//	BigInteger nativeMax = signed ? (BigInteger.One << (width - 1)) - 1 : (BigInteger.One << width) - 1;
-
-		//	BigInteger min = parsedMin ?? nativeMin;
-		//	BigInteger max = parsedMax ?? nativeMax;
-		//	if (min < nativeMin)
-		//	{
-		//		throw new SerializationException($"Field '{metadata.Name}': Min value ({min}) is less than what fits in width ({nativeMin}).");
-		//	}
-		//	if (max > nativeMax)
-		//	{
-		//		throw new SerializationException($"Field '{metadata.Name}': Max value ({max}) is greater than what fits in width ({nativeMax}).");
-		//	}
-		//	if (max < min)
-		//	{
-		//		throw new SerializationException($"Field '{metadata.Name}': Invalid bounds: max ({max}) is less than min ({min}).");
-		//	}
-		//	return (min, max);
-		//}
 	}
 }
